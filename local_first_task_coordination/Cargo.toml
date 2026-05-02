@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "crdt_core",
+    "task_model",
+    "node_sim",
+]
+resolver = "2"
