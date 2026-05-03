@@ -9,6 +9,10 @@ version = "0.1.0"
 [[package]]
 name = "node_sim"
 version = "0.1.0"
+dependencies = [
+ "crdt_core",
+ "task_model",
+]
 
 [[package]]
 name = "task_model"
