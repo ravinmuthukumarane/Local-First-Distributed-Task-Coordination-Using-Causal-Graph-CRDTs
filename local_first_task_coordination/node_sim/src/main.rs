@@ -98,6 +98,15 @@ impl Simulation {
         self.message_queues[sender_index].push(message);
     }
 
+    pub fn deliver_all(&mut self) {
+        for (node, queue) in self.nodes.iter_mut().zip(self.message_queues.iter_mut()) {
+            for message in queue.drain(..) {
+                node.receive_message(message);
+            }
+            node.process_inbox();
+        }
+    }
+    
     pub fn broadcast_with_failures(&mut self, sender_index: usize, drop_indices: &[usize]) {
         if self.partitioned.contains(&sender_index) {
             // drain the outbox silently — sender is cut off from everyone including itself
@@ -115,15 +124,6 @@ impl Simulation {
             }
         }
         self.message_queues[sender_index].push(message);
-    }
-
-    pub fn deliver_all(&mut self) {
-        for (node, queue) in self.nodes.iter_mut().zip(self.message_queues.iter_mut()) {
-            for message in queue.drain(..) {
-                node.receive_message(message);
-            }
-            node.process_inbox();
-        }
     }
 
     pub fn step(&mut self, steps: usize) {
