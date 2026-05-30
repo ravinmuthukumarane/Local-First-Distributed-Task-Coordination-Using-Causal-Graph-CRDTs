@@ -1,8 +1,13 @@
 use crdt_core::causal_graph::CausalGraph;
-use crdt_core::{NodeId, Operation, TaskId};
+use crdt_core::{NodeId, TaskId};
 
-pub use crdt_core::Operation as Op;
+pub use crdt_core::Operation;
 
+/// Extracts all events related to a specific task into a new `CausalGraph`.
+///
+/// An event belongs to the task if its `operation` field references `task_id`
+/// in any variant. Causal edges between included events are preserved; edges
+/// that cross task boundaries are dropped.
 pub fn extract_task_subgraph(graph: &CausalGraph, task_id: &TaskId) -> CausalGraph {
     let mut sub = CausalGraph::new();
 
@@ -23,24 +28,35 @@ pub fn extract_task_subgraph(graph: &CausalGraph, task_id: &TaskId) -> CausalGra
     // event payload — so we must carry them over explicitly.
     for event_id in sub.events.keys() {
         if let Some(child_set) = graph.children.get(event_id) {
-            sub.children
-                .entry(event_id.clone())
-                .or_default()
-                .extend(child_set.iter().filter(|c| sub.events.contains_key(c)).cloned());
+            sub.children.entry(event_id.clone()).or_default().extend(
+                child_set
+                    .iter()
+                    .filter(|c| sub.events.contains_key(c))
+                    .cloned(),
+            );
         }
     }
 
     sub
 }
 
-#[derive(Debug, PartialEq)]
+/// Derived view of a task's lifecycle state, computed from a `CausalGraph`.
+#[derive(Debug, PartialEq, Eq)]
 pub struct TaskState {
+    /// `true` if at least one `Create` event for this task has been observed.
     pub exists: bool,
+    /// All `NodeId`s that have claimed this task.
     pub claims: Vec<NodeId>,
+    /// All `NodeId`s that have completed this task.
     pub completions: Vec<NodeId>,
+    /// `true` if more than one node has claimed or more than one has completed.
     pub has_conflict: bool,
 }
 
+/// Derives the current `TaskState` for a task from a `CausalGraph`.
+///
+/// Calls [`extract_task_subgraph`] internally to scope the scan to relevant events.
+/// The result is deterministic and depends only on the graph contents.
 pub fn derive_task_state(graph: &CausalGraph, task_id: &TaskId) -> TaskState {
     let sub = extract_task_subgraph(graph, task_id);
 
@@ -58,7 +74,12 @@ pub fn derive_task_state(graph: &CausalGraph, task_id: &TaskId) -> TaskState {
 
     let has_conflict = claims.len() > 1 || completions.len() > 1;
 
-    TaskState { exists, claims, completions, has_conflict }
+    TaskState {
+        exists,
+        claims,
+        completions,
+        has_conflict,
+    }
 }
 
 #[cfg(test)]
@@ -104,7 +125,11 @@ mod tests {
         let mut graph = CausalGraph::new();
         graph.insert(event(1, Operation::Create(TaskId(42)), vec![]));
         graph.insert(event(2, Operation::Claim(TaskId(42), NodeId(1)), vec![1]));
-        graph.insert(event(3, Operation::Complete(TaskId(42), NodeId(1)), vec![2]));
+        graph.insert(event(
+            3,
+            Operation::Complete(TaskId(42), NodeId(1)),
+            vec![2],
+        ));
 
         let sub = extract_task_subgraph(&graph, &TaskId(42));
 
@@ -201,7 +226,11 @@ mod tests {
         let mut graph = CausalGraph::new();
         graph.insert(event(1, Operation::Create(TaskId(1)), vec![]));
         graph.insert(event(2, Operation::Claim(TaskId(1), NodeId(10)), vec![1]));
-        graph.insert(event(3, Operation::Complete(TaskId(1), NodeId(10)), vec![2]));
+        graph.insert(event(
+            3,
+            Operation::Complete(TaskId(1), NodeId(10)),
+            vec![2],
+        ));
 
         let state = derive_task_state(&graph, &TaskId(1));
 
@@ -213,8 +242,16 @@ mod tests {
     fn duplicate_completions_causes_conflict() {
         let mut graph = CausalGraph::new();
         graph.insert(event(1, Operation::Create(TaskId(1)), vec![]));
-        graph.insert(event(2, Operation::Complete(TaskId(1), NodeId(10)), vec![1]));
-        graph.insert(event(3, Operation::Complete(TaskId(1), NodeId(20)), vec![1]));
+        graph.insert(event(
+            2,
+            Operation::Complete(TaskId(1), NodeId(10)),
+            vec![1],
+        ));
+        graph.insert(event(
+            3,
+            Operation::Complete(TaskId(1), NodeId(20)),
+            vec![1],
+        ));
 
         let state = derive_task_state(&graph, &TaskId(1));
 

@@ -2,20 +2,30 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{Event, EventId};
 
-#[derive(Clone)]
+/// Append-only directed acyclic graph of causal events.
+///
+/// This is the core CRDT data structure. Events are stored by `EventId` and
+/// causal edges are recorded in a separate `children` map so that edges for
+/// not-yet-received parents can be stored without blocking insertion.
+#[derive(Clone, Default)]
 pub struct CausalGraph {
+    /// All known events, indexed by their unique `EventId`.
     pub events: HashMap<EventId, Event>,
+    /// Maps each parent `EventId` to the set of `EventId`s that list it as a parent.
     pub children: HashMap<EventId, HashSet<EventId>>,
 }
 
 impl CausalGraph {
+    /// Creates an empty `CausalGraph`.
     pub fn new() -> Self {
-        Self {
-            events: HashMap::new(),
-            children: HashMap::new(),
-        }
+        Self::default()
     }
 
+    /// Inserts an event into the graph.
+    ///
+    /// If an event with the same `event_id` already exists the call is a no-op.
+    /// Causal edges are recorded for all entries in `causal_parents` even if
+    /// those parent events have not yet been inserted.
     pub fn insert(&mut self, event: Event) {
         if self.events.contains_key(&event.event_id) {
             return;
@@ -31,10 +41,13 @@ impl CausalGraph {
         self.events.insert(event.event_id.clone(), event);
     }
 
-    // Reusing `insert` for events guarantees the duplicate-skip and edge-recording
-    // logic stays in one place. The children union handles edges that `other` recorded
-    // for parents that were absent at insertion time — those edges may not be
-    // re-derived from the events alone, so we must merge the edge sets directly.
+    /// Merges another `CausalGraph` into this one.
+    ///
+    /// The operation is idempotent, commutative, and associative (CRDT join).
+    /// Reusing `insert` for events guarantees the duplicate-skip and edge-recording
+    /// logic stays in one place. The children union handles edges that `other` recorded
+    /// for parents that were absent at insertion time — those edges may not be
+    /// re-derived from the events alone, so we must merge the edge sets directly.
     pub fn merge(&mut self, other: &CausalGraph) {
         for event in other.events.values() {
             self.insert(event.clone());
@@ -82,7 +95,11 @@ mod tests {
     fn insert_child_with_existing_parent() {
         let mut graph = CausalGraph::new();
         graph.insert(create_event(1, Operation::Create(TaskId(10)), vec![]));
-        graph.insert(create_event(2, Operation::Claim(TaskId(10), NodeId(20)), vec![1]));
+        graph.insert(create_event(
+            2,
+            Operation::Claim(TaskId(10), NodeId(20)),
+            vec![1],
+        ));
 
         assert_eq!(graph.events.len(), 2);
         assert!(graph.children[&EventId(1)].contains(&EventId(2)));
@@ -91,7 +108,11 @@ mod tests {
     #[test]
     fn insert_child_before_parent_arrives() {
         let mut graph = CausalGraph::new();
-        graph.insert(create_event(2, Operation::Claim(TaskId(10), NodeId(20)), vec![1]));
+        graph.insert(create_event(
+            2,
+            Operation::Claim(TaskId(10), NodeId(20)),
+            vec![1],
+        ));
 
         assert_eq!(graph.events.len(), 1);
         assert!(graph.children[&EventId(1)].contains(&EventId(2)));
@@ -125,11 +146,19 @@ mod tests {
     fn merge_overlapping_graphs() {
         let mut a = CausalGraph::new();
         a.insert(create_event(1, Operation::Create(TaskId(1)), vec![]));
-        a.insert(create_event(2, Operation::Claim(TaskId(1), NodeId(1)), vec![1]));
+        a.insert(create_event(
+            2,
+            Operation::Claim(TaskId(1), NodeId(1)),
+            vec![1],
+        ));
 
         let mut b = CausalGraph::new();
         b.insert(create_event(1, Operation::Create(TaskId(1)), vec![]));
-        b.insert(create_event(3, Operation::Complete(TaskId(1), NodeId(1)), vec![1]));
+        b.insert(create_event(
+            3,
+            Operation::Complete(TaskId(1), NodeId(1)),
+            vec![1],
+        ));
 
         a.merge(&b);
 
@@ -154,7 +183,11 @@ mod tests {
 
         let mut source = CausalGraph::new();
         source.insert(create_event(1, Operation::Create(TaskId(1)), vec![]));
-        source.insert(create_event(2, Operation::Claim(TaskId(1), NodeId(1)), vec![1]));
+        source.insert(create_event(
+            2,
+            Operation::Claim(TaskId(1), NodeId(1)),
+            vec![1],
+        ));
 
         empty.merge(&source);
 

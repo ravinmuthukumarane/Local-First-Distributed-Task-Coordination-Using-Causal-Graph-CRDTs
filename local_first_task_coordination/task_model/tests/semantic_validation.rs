@@ -16,7 +16,11 @@ fn causal_chain_respected() {
     let mut graph = CausalGraph::new();
     graph.insert(event(1, Operation::Create(TaskId(1)), vec![]));
     graph.insert(event(2, Operation::Claim(TaskId(1), NodeId(10)), vec![1]));
-    graph.insert(event(3, Operation::Complete(TaskId(1), NodeId(10)), vec![2]));
+    graph.insert(event(
+        3,
+        Operation::Complete(TaskId(1), NodeId(10)),
+        vec![2],
+    ));
 
     let state = derive_task_state(&graph, &TaskId(1));
 
@@ -77,11 +81,19 @@ fn multi_task_graph_isolation() {
     // Task A lifecycle
     graph.insert(event(1, Operation::Create(TaskId(1)), vec![]));
     graph.insert(event(2, Operation::Claim(TaskId(1), NodeId(10)), vec![1]));
-    graph.insert(event(3, Operation::Complete(TaskId(1), NodeId(10)), vec![2]));
+    graph.insert(event(
+        3,
+        Operation::Complete(TaskId(1), NodeId(10)),
+        vec![2],
+    ));
     // Task B lifecycle
     graph.insert(event(4, Operation::Create(TaskId(2)), vec![]));
     graph.insert(event(5, Operation::Claim(TaskId(2), NodeId(20)), vec![4]));
-    graph.insert(event(6, Operation::Complete(TaskId(2), NodeId(20)), vec![5]));
+    graph.insert(event(
+        6,
+        Operation::Complete(TaskId(2), NodeId(20)),
+        vec![5],
+    ));
 
     let state_a = derive_task_state(&graph, &TaskId(1));
     assert!(state_a.exists);
@@ -102,7 +114,11 @@ fn idempotent_merge_preserves_derived_state() {
     let mut graph = CausalGraph::new();
     graph.insert(event(1, Operation::Create(TaskId(1)), vec![]));
     graph.insert(event(2, Operation::Claim(TaskId(1), NodeId(10)), vec![1]));
-    graph.insert(event(3, Operation::Complete(TaskId(1), NodeId(10)), vec![2]));
+    graph.insert(event(
+        3,
+        Operation::Complete(TaskId(1), NodeId(10)),
+        vec![2],
+    ));
 
     let state_before = derive_task_state(&graph, &TaskId(1));
 

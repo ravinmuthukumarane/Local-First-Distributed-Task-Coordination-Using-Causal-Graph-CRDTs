@@ -2,22 +2,28 @@ use std::collections::HashSet;
 
 use crate::Event;
 
-#[derive(Clone)]
+/// A batch of events exchanged between nodes during a synchronisation round.
+///
+/// Events are stored in a `HashSet` so that duplicates are automatically
+/// deduplicated upon insertion.
+#[derive(Clone, Default)]
 pub struct Message {
+    /// The set of events carried by this message.
     pub events: HashSet<Event>,
 }
 
 impl Message {
+    /// Creates an empty `Message`.
     pub fn new() -> Message {
-        Message {
-            events: HashSet::new(),
-        }
+        Message::default()
     }
 
+    /// Adds an event to the message, deduplicating by `EventId`.
     pub fn add(&mut self, event: Event) {
         self.events.insert(event);
     }
 
+    /// Constructs a `Message` from a vector of events.
     pub fn from_events(events: Vec<Event>) -> Message {
         let mut m = Message::new();
         for e in events {
