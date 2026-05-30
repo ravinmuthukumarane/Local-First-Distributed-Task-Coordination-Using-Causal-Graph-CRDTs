@@ -1,26 +1,40 @@
 pub mod causal_graph;
 pub mod message;
 
+/// Unique identifier for a task, backed by a `u128`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct TaskId(pub u128);
 
+/// Unique identifier for a node in the distributed system, backed by a `u128`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NodeId(pub u128);
 
+/// Unique identifier for a causal event, backed by a `u128`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct EventId(pub u128);
 
+/// A task lifecycle operation carried by a causal event.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Operation {
+    /// Creates a new task identified by the given `TaskId`.
     Create(TaskId),
+    /// Claims an existing task on behalf of a node.
     Claim(TaskId, NodeId),
+    /// Marks a task as complete on behalf of a node.
     Complete(TaskId, NodeId),
 }
 
+/// An immutable causal event that records one operation and its causal dependencies.
+///
+/// Events with an empty `causal_parents` list are root events and have no
+/// causal predecessors.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Event {
+    /// Unique identifier for this event.
     pub event_id: EventId,
+    /// The operation this event records.
     pub operation: Operation,
+    /// Events that causally precede this one. Empty for root events.
     pub causal_parents: Vec<EventId>,
 }
 

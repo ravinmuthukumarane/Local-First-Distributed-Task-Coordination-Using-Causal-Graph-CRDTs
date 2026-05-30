@@ -1,0 +1,91 @@
+{
+  "scenario": "short_partition",
+  "runs": [
+    {
+      "seed": 1,
+      "convergence_round": 3,
+      "total_messages": 7,
+      "final_event_counts": [3, 3, 3],
+      "final_conflict_counts": [0, 0, 0],
+      "final_edge_counts": [1, 1, 1]
+    },
+    {
+      "seed": 2,
+      "convergence_round": 3,
+      "total_messages": 7,
+      "final_event_counts": [3, 3, 3],
+      "final_conflict_counts": [0, 0, 0],
+      "final_edge_counts": [1, 1, 1]
+    },
+    {
+      "seed": 3,
+      "convergence_round": 3,
+      "total_messages": 7,
+      "final_event_counts": [3, 3, 3],
+      "final_conflict_counts": [0, 0, 0],
+      "final_edge_counts": [1, 1, 1]
+    },
+    {
+      "seed": 4,
+      "convergence_round": 3,
+      "total_messages": 7,
+      "final_event_counts": [3, 3, 3],
+      "final_conflict_counts": [0, 0, 0],
+      "final_edge_counts": [1, 1, 1]
+    },
+    {
+      "seed": 5,
+      "convergence_round": 3,
+      "total_messages": 7,
+      "final_event_counts": [3, 3, 3],
+      "final_conflict_counts": [0, 0, 0],
+      "final_edge_counts": [1, 1, 1]
+    },
+    {
+      "seed": 6,
+      "convergence_round": 3,
+      "total_messages": 7,
+      "final_event_counts": [3, 3, 3],
+      "final_conflict_counts": [0, 0, 0],
+      "final_edge_counts": [1, 1, 1]
+    },
+    {
+      "seed": 7,
+      "convergence_round": 3,
+      "total_messages": 7,
+      "final_event_counts": [3, 3, 3],
+      "final_conflict_counts": [0, 0, 0],
+      "final_edge_counts": [1, 1, 1]
+    },
+    {
+      "seed": 8,
+      "convergence_round": 3,
+      "total_messages": 7,
+      "final_event_counts": [3, 3, 3],
+      "final_conflict_counts": [0, 0, 0],
+      "final_edge_counts": [1, 1, 1]
+    },
+    {
+      "seed": 9,
+      "convergence_round": 3,
+      "total_messages": 7,
+      "final_event_counts": [3, 3, 3],
+      "final_conflict_counts": [0, 0, 0],
+      "final_edge_counts": [1, 1, 1]
+    },
+    {
+      "seed": 10,
+      "convergence_round": 3,
+      "total_messages": 7,
+      "final_event_counts": [3, 3, 3],
+      "final_conflict_counts": [0, 0, 0],
+      "final_edge_counts": [1, 1, 1]
+    }
+  ],
+  "summary": {
+    "min_convergence_round": 3,
+    "max_convergence_round": 3,
+    "avg_convergence_round": 3.00,
+    "always_converged": true
+  }
+}
