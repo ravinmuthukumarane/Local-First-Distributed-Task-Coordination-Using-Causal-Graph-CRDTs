@@ -247,7 +247,8 @@ pub fn print_multi_seed_summary(summaries: &[SeedSummary]) {
 }
 
 pub fn write_multi_seed_json(scenario_name: &str, summaries: &[SeedSummary]) {
-    let filename = format!("{}_multi_seed.json", scenario_name);
+    std::fs::create_dir_all("results").expect("failed to create results directory");
+    let filename = format!("results/{}_multi_seed.json", scenario_name);
 
     let runs_json = summaries
         .iter()

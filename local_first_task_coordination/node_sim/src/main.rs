@@ -69,7 +69,8 @@ fn print_summary(sim: &Simulation, metrics: &[Metrics], label: &str) {
 }
 
 fn write_scenario_json(label: &str, seed: u128, metrics: &[Metrics], log: &[String]) {
-    let filename = format!("{}_seed{}.json", label, seed);
+    std::fs::create_dir_all("results").expect("failed to create results directory");
+    let filename = format!("results/{}_seed{}.json", label, seed);
 
     let rounds_json = metrics
         .iter()
