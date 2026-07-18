@@ -1,105 +1,278 @@
-# Local-First Distributed Task Coordination
+# Local-First Distributed Task Coordination Using Causal-Graph CRDTs
 
-A Rust implementation of a distributed task system where multiple nodes can create, claim, and complete tasks — without a central server. Nodes work independently, sync their state by exchanging messages, and always end up consistent, even if they were offline or missed messages.
+MSc Research Implementation — examiner submission README.
 
-## How it works
+---
 
-Every action a node takes (creating a task, claiming it, completing it) is recorded as an **event**. Events are stored in a graph where each event knows which earlier events it followed — this is the causal graph. When two nodes sync, they merge their graphs. Because the merge is designed to always produce the same result regardless of order, nodes always converge to the same state.
+## 1. Project title and purpose
 
-The three core concepts:
+**Title:** Local-First Distributed Task Coordination Using Causal-Graph CRDTs
 
-- **Events** — immutable records of something that happened (Create / Claim / Complete a task)
-- **Causal graph** — a DAG linking each event to the events that preceded it; the source of truth for every node
-- **Merge** — the sync operation; merging A into B gives the same result as merging B into A, and doing it twice changes nothing
+**Purpose.** This project implements and evaluates a *local-first*, serverless
+mechanism for coordinating tasks across many independent nodes. Each node can
+**create**, **claim**, and **complete** tasks entirely offline, then reconcile
+its state with other nodes purely by exchanging messages — with no central
+server, no coordinator, and no locking.
 
-When two nodes both claim the same task without seeing each other's claim first, the system detects the conflict and records both — it does not silently drop either side.
+The coordination substrate is a **Conflict-free Replicated Data Type (CRDT)**
+built on a **causal graph**: a directed acyclic graph in which every recorded
+action (an *event*) points back to the events it causally depended on. The
+merge operation over these graphs is **idempotent, commutative, and
+associative**, so every node that has seen the same set of events converges to
+the same state regardless of the order or timing in which messages arrive —
+including after network partitions and offline periods (Strong Eventual
+Consistency).
 
-## Project layout
+The deliverable is:
+
+1. A reusable CRDT + task-model **library** (the coordination logic), and
+2. A deterministic **simulation harness** that drives the library through a set
+   of network scenarios (clean network, short/long partitions, high
+   contention), collects convergence and conflict metrics, and writes them to
+   JSON for analysis.
+
+Concurrent, conflicting actions (e.g. two nodes claiming the same task without
+having seen each other) are **never silently dropped** — the system records
+both sides and flags the conflict, which is the property the evaluation is
+designed to demonstrate.
+
+---
+
+## 2. Research context
+
+This is a systems / distributed-computing dissertation artefact. The research
+question concerns whether a causal-graph CRDT can provide correct, convergent
+task coordination for local-first applications under adverse network
+conditions. There is **no machine-learning component** — see
+[Section 12, Not applicable](#12-not-applicable-to-this-project) for how the
+generic submission checklist maps onto a systems project.
+
+---
+
+## 3. Programming languages, libraries and frameworks used
+
+| Concern | Choice |
+|---|---|
+| Language | **Rust** (edition 2024) |
+| Build system / package manager | **Cargo** (ships with Rust) |
+| Runtime libraries | **None** — the entire system uses only the Rust standard library (`std`). There are zero third-party crate dependencies. |
+| Test framework | Rust's built-in `#[test]` harness (`cargo test`) |
+| Data format for results | JSON (hand-serialised via `std`; no serde dependency) |
+
+The absence of external dependencies is deliberate: it keeps the CRDT
+correctness argument self-contained and makes the build fully reproducible
+offline.
+
+---
+
+## 4. Software and hardware requirements
+
+**Software**
+
+- **Rust toolchain 1.85 or newer** (required because the crates use *edition
+  2024*). Verified on `rustc` / `cargo` 1.94. Install via
+  [rustup](https://rustup.rs/).
+- A supported operating system: **macOS, Linux, or Windows** (developed and
+  tested on macOS / Darwin).
+- No database engine, container runtime, or network access is required.
+
+**Hardware**
+
+- Any machine capable of running the Rust toolchain.
+- The simulation is single-threaded, in-memory, and finishes in well under a
+  second. Memory footprint is a few megabytes; roughly **150–300 MB of disk**
+  is needed for the Rust toolchain and the compiled `target/` directory.
+
+---
+
+## 5. Repository structure
 
 ```
-local_first_task_coordination/
-├── crdt_core/      # Core data types: IDs, Event, Operation, CausalGraph, Message
-├── task_model/     # Domain logic: extract per-task state from a graph
-└── node_sim/       # Simulation: nodes, message delivery, scenarios, metrics
+Local-First-Distributed-Task-Coordination-Using-Causal-Graph-CRDTs/
+├── README.md                        # ← this submission README
+└── local_first_task_coordination/   # The Cargo workspace (all source code lives here)
+    ├── Cargo.toml                   # Workspace manifest
+    ├── Cargo.lock                   # Pinned build (reproducibility)
+    ├── results/                     # All generated result JSON (the single output location)
+    │   ├── *_seed1.json             #   Per-round trace for each scenario at seed 1
+    │   └── *_multi_seed.json        #   Aggregate across seeds 1–10 for each scenario
+    ├── crdt_core/                   # Core CRDT data types
+    │   ├── src/lib.rs               #   IDs, Operation, Event
+    │   ├── src/causal_graph.rs      #   CausalGraph: insert + merge (the CRDT join)
+    │   ├── src/message.rs           #   Message envelope for node-to-node sync
+    │   └── tests/                   #   merge_properties.rs, causal_graph_integration.rs
+    ├── task_model/                  # Domain logic on top of the CRDT
+    │   ├── src/lib.rs               #   extract_task_subgraph, derive_task_state
+    │   └── tests/semantic_validation.rs
+    └── node_sim/                    # Simulation harness (the runnable binary)
+        ├── src/node.rs              #   Node: local graph + inbox/outbox
+        ├── src/simulation.rs        #   Simulation: routing, partitions, metrics, logging
+        ├── src/scenarios.rs         #   The four experiment scenarios + multi-seed runner
+        └── src/main.rs              #   Entry point: runs all scenarios, writes JSON
 ```
 
-### crdt_core
+All generated output lives in **one place**: `local_first_task_coordination/results/`.
+The eight files there are committed as sample output / test evidence; re-running
+the program overwrites them with byte-identical content (the run is
+deterministic).
 
-The foundation. Defines `TaskId`, `NodeId`, `EventId` (all `u128` newtypes), the `Operation` enum, the `Event` struct, and the `CausalGraph` with `insert` and `merge`. Also defines `Message`, the envelope used to send events between nodes.
+**The three crates (a layered design):**
 
-### task_model
+- **`crdt_core`** — the foundation. Defines `TaskId`, `NodeId`, `EventId` (all
+  `u128` newtypes), the `Operation` enum (`Create` / `Claim` / `Complete`), the
+  immutable `Event` struct, the append-only `CausalGraph` with `insert` and
+  `merge`, and the `Message` envelope used to ship events between nodes.
+- **`task_model`** — sits on `crdt_core`. Given a graph and a task ID it extracts
+  the task's sub-graph and derives a `TaskState` (does the task exist, who
+  claimed it, who completed it, is there a conflict).
+- **`node_sim`** — the experiment harness. A `Node` owns a local graph plus an
+  outbox/inbox; a `Simulation` wires several nodes together, routes messages,
+  can partition and heal the network, and collects per-round `Metrics`.
 
-Sits on top of `crdt_core`. Given a graph and a task ID, it can extract all events relevant to that task and derive a `TaskState` — whether the task exists, who has claimed it, who has completed it, and whether there is a conflict.
+---
 
-### node_sim
+## 6. Installation procedure
 
-The simulation harness. Each `Node` has a local graph, an outbox (events to send), and an inbox (events received). A `Simulation` wires multiple nodes together, routes messages, and supports:
+### Step 1 — Install the Rust toolchain
 
-- Normal broadcast (reliable delivery)
-- Broadcast with failures (drop specific nodes, simulate network partitions)
-- Partition and heal
-- Per-round metrics collection and structured logging
-
-## Requirements
-
-- [Rust](https://rustup.rs/) 1.70 or later
-- No external dependencies — pure `std`
-
-## Build
+If Rust is not already installed:
 
 ```sh
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+# then follow the prompts, and restart your shell (or `source ~/.cargo/env`)
+```
+
+Verify the version is 1.85 or newer:
+
+```sh
+rustc --version
+cargo --version
+```
+
+### Step 2 — Obtain the code
+
+The submission already contains the full source. If working from the Git
+repository instead:
+
+```sh
+git clone <repository-url>
+cd Local-First-Distributed-Task-Coordination-Using-Causal-Graph-CRDTs
+```
+
+### Step 3 — Enter the workspace and build
+
+**All Cargo commands must be run from inside the `local_first_task_coordination`
+directory** (that is where the workspace `Cargo.toml` lives):
+
+```sh
+cd local_first_task_coordination
 cargo build
 ```
 
-## Run
+### Dependency installation
+
+**None required.** The project has no third-party dependencies. `cargo build`
+compiles only the three local crates against the Rust standard library. `Cargo.lock`
+is committed so the build is fully reproducible with no network access.
+
+---
+
+## 7. Configuration requirements
+
+There are **no configuration files, environment variables, or secrets**. The
+experiment parameters are set directly in code and are intentionally simple:
+
+| Parameter | Where | Default |
+|---|---|---|
+| Single-run seed | `node_sim/src/main.rs` (`let seed = 1u128;`) | `1` |
+| Multi-seed range | `node_sim/src/main.rs` (`let seeds = (1..=10)`) | seeds `1..=10` |
+| Scenario set | `node_sim/src/scenarios.rs` | four scenarios (see below) |
+
+The **seed** drives a deterministic `EventCounter`, so re-running with the same
+seed reproduces byte-identical results — this is what makes the evaluation
+repeatable.
+
+---
+
+## 8. Instructions for running the system
+
+From inside `local_first_task_coordination/`:
 
 ```sh
 cargo run
 ```
 
-This runs four scenarios at seed 1 and prints a round-by-round summary to the terminal. It also writes JSON files to the current directory.
+This:
 
-**Scenarios:**
+1. Runs the four scenarios at **seed 1**, printing a round-by-round summary to
+   the terminal.
+2. Re-runs each scenario across **seeds 1–10** and prints an aggregate table.
+3. Writes all JSON result files into a **`results/` directory** (created
+   automatically), relative to where you run the command. Running from inside
+   `local_first_task_coordination/` — as instructed — puts them in
+   `local_first_task_coordination/results/`.
+
+### Scenarios
 
 | Scenario | What it simulates |
 |---|---|
-| `no_partition` | Clean network — all nodes receive every message |
-| `short_partition` | One node cut off for 2 rounds, then reconnected |
-| `long_partition` | One node cut off for 5 rounds, then reconnected |
-| `high_contention` | All nodes isolated, each claims the same task, then reconnect |
+| `no_partition` | Clean network — every node receives every message; linear Create → Claim → Complete |
+| `short_partition` | One node cut off for 2 rounds, then reconnected and caught up |
+| `long_partition` | One node cut off for 5 rounds, then reconnected and caught up |
+| `high_contention` | All nodes isolated, each claims the same task, then reconnect → conflict is detected |
 
-The output also runs each scenario across seeds 1–10 and writes aggregate files.
+### Output files
 
-**Output files:**
+Per-seed traces (in `results/`):
 
 ```
-no_partition_seed1.json
-short_partition_seed1.json
-long_partition_seed1.json
-high_contention_seed1.json
-
-no_partition_multi_seed.json
-short_partition_multi_seed.json
-long_partition_multi_seed.json
-high_contention_multi_seed.json
+no_partition_seed1.json      short_partition_seed1.json
+long_partition_seed1.json    high_contention_seed1.json
 ```
 
-## Test
+Multi-seed aggregates (in `results/`):
+
+```
+no_partition_multi_seed.json      short_partition_multi_seed.json
+long_partition_multi_seed.json    high_contention_multi_seed.json
+```
+
+Pre-generated copies of all eight files are committed in
+`local_first_task_coordination/results/` as sample output/test evidence, so
+results can be inspected without rebuilding.
+
+---
+
+## 9. Testing and test evidence
+
+Run the full suite from inside `local_first_task_coordination/`:
 
 ```sh
 cargo test
 ```
 
-84 tests covering:
+**Expected result: 84 tests, all passing** (verified with the toolchain in
+Section 4), distributed as:
 
-- Basic correctness (insert, merge, deduplication, conflict detection)
-- Algebraic properties of merge (idempotent, commutative, associative)
-- Scenario-level integration tests (partition, heal, convergence)
-- Semantic correctness (a task with two concurrent claims is always detected as a conflict)
+| Location | Tests | Focus |
+|---|---:|---|
+| `crdt_core` unit tests | 15 | IDs, `Event`, `insert`, `merge`, dedup, `Message` |
+| `crdt_core/tests/merge_properties.rs` | 3 | merge is **idempotent, commutative, associative** (the CRDT laws) |
+| `crdt_core/tests/causal_graph_integration.rs` | 6 | multi-event graph behaviour |
+| `task_model` unit tests | 12 | sub-graph extraction, state derivation, conflict detection |
+| `task_model/tests/semantic_validation.rs` | 6 | end-to-end semantics (e.g. two concurrent claims → conflict) |
+| `node_sim` unit tests | 42 | node buffers, broadcast/deliver, partition/heal, metrics, logging |
+| **Total** | **84** | |
 
-## JSON output
+The pre-generated JSON files in `local_first_task_coordination/results/` are the
+recorded output of a successful run and serve as reproducible test evidence.
 
-Each single-seed file records the simulation state after every delivery round:
+---
+
+## 10. Understanding the output (result-file schema)
+
+Each **single-seed** file records the simulation state after every delivery
+round, plus an ordered event log:
 
 ```json
 {
@@ -124,14 +297,109 @@ Each single-seed file records the simulation state after every delivery round:
 }
 ```
 
-**Field reference:**
-
 | Field | Meaning |
 |---|---|
 | `event_counts` | Number of events in each node's graph after this round |
-| `conflict_counts` | 1 if the node sees a conflict on the tracked task, otherwise 0 |
+| `conflict_counts` | `1` if the node sees a conflict on the tracked task, else `0` (per node) |
 | `edge_counts` | Number of causal edges (parent→child links) in each node's graph |
-| `convergence_round` | The first round where all nodes had identical event sets (`null` if never) |
+| `converged` | `true` when every node holds an identical set of event IDs |
+| `convergence_round` | First round in which all nodes converged (`null` if never) |
 | `log` | Ordered trace of every broadcast, delivery, and state snapshot |
 
-Multi-seed files add a `summary` block with `min`, `max`, and `avg` convergence round across all seeds, plus `always_converged`.
+**Multi-seed** files replace `rounds` with one entry per seed and add a
+`summary` block reporting `min` / `max` / `avg` convergence round across all
+seeds plus `always_converged`.
+
+---
+
+## 11. How it works (core concepts)
+
+- **Event** — an immutable record of one action (`Create` / `Claim` /
+  `Complete`) plus the list of event IDs it causally depended on.
+- **Causal graph** — an append-only DAG of events; each node's local source of
+  truth. Edges for a not-yet-received parent are still recorded, so
+  out-of-order delivery is handled gracefully.
+- **Merge** — the CRDT join. Merging graph *A* into *B* gives the same result as
+  merging *B* into *A*, and merging twice changes nothing. This is what
+  guarantees convergence.
+- **Conflict detection** — a task with more than one concurrent claim (or
+  completion) is derived as a conflict; both sides are retained, never
+  overwritten.
+
+---
+
+## Instructions for training or evaluating models
+
+**Not applicable** — this project contains no machine-learning models. The
+equivalent "evaluation" step is running the scenario simulations and inspecting
+the convergence/conflict metrics; see Sections 8–10.
+
+---
+
+## Default user credentials or test accounts
+
+**Not applicable** — the system is a standalone, offline simulation with no
+users, authentication, sessions, or accounts.
+
+---
+
+## 12. Known limitations
+
+- **Simulation, not a live network.** Nodes, message delivery, and partitions
+  are modelled in a single deterministic in-memory process. There is no real
+  transport (TCP/UDP), no serialization-over-the-wire, and no wall-clock
+  timing.
+- **Manual causal parents / event IDs.** In the harness, event IDs come from a
+  seeded counter and causal parents are wired explicitly per scenario, rather
+  than being generated automatically from a running node's local state.
+- **Conflict *detection*, not resolution.** The system faithfully records and
+  flags conflicting claims/completions but does not apply an
+  application-level policy to pick a winner — that is left to the consuming
+  application.
+- **Unbounded, ever-growing graph.** Events are append-only with no compaction,
+  garbage collection, or snapshotting, so memory grows with history. This is
+  acceptable for the bounded experiments here but not for long-lived
+  deployment.
+- **Hand-written JSON serialisation.** Result files are produced by manual
+  string formatting (no serde). Output is valid JSON for these fixed shapes but
+  is not a general-purpose serialiser.
+- **Fixed topology.** Scenarios use three nodes and a single tracked task;
+  scaling parameters are changed by editing the source, not via configuration.
+
+---
+
+## 13. Not applicable to this project
+
+The generic submission checklist assumes a data-science / web-application
+shape. This is a systems research artefact, so several items do not apply and
+are flagged here for completeness:
+
+| Checklist item | Status |
+|---|---|
+| Model training / evaluation scripts | **N/A** — no ML models |
+| Data preprocessing / feature engineering | **N/A** — input data is generated deterministically from seeds, not ingested |
+| Front-end / back-end / database components | **N/A** — no UI, server, or database; the system is a library + CLI simulation |
+| Database scripts and schemas | **N/A** — no persistent datastore |
+| Trained model files | **N/A** |
+| Sample input data / dataset preparation | The "dataset" is the generated simulation input; the eight committed `results/*.json` files are sample **output**. No external dataset download is required. |
+| Configuration files | **N/A** — parameters are in-code (Section 7) |
+| API integration instructions | **N/A** — no external or internal API |
+| Deployment configuration | **N/A** — runs locally via `cargo run` |
+| External services or API keys | **None required** — the project makes no network calls |
+
+---
+
+## 14. Quick start (summary)
+
+```sh
+# 1. Ensure Rust ≥ 1.85 is installed (https://rustup.rs/)
+rustc --version
+
+# 2. Enter the workspace
+cd local_first_task_coordination
+
+# 3. Build, test, run
+cargo build
+cargo test      # 84 tests, all passing
+cargo run       # runs all scenarios and writes result JSON to the current directory
+```
