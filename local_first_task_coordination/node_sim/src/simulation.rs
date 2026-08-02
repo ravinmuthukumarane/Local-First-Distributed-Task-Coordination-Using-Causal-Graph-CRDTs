@@ -241,7 +241,7 @@ impl Simulation {
 
 #[cfg(test)]
 mod tests {
-    use crdt_core::{Event, EventId, NodeId, Operation, TaskId};
+    use crdt_core::{EventId, NodeId, TaskId};
 
     use super::*;
 
