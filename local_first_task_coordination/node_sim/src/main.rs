@@ -48,24 +48,51 @@ fn main() {
 }
 
 fn print_summary(sim: &Simulation, metrics: &[Metrics], label: &str) {
+    let convergence_round = match metrics.first().and_then(|m| m.convergence_round) {
+        Some(r) => r.to_string(),
+        None => "none".to_string(),
+    };
     println!(
-        "[{}] rounds={} convergence_round={:?}",
+        "[{}] rounds={} convergence_round={}",
         label,
         metrics.len(),
-        metrics.first().and_then(|m| m.convergence_round)
+        convergence_round
+    );
+
+    println!(
+        "  {:>6} | {:>9} | {:>14} | {:>12} | {:>12} | conflicts",
+        "round", "converged", "message_count", "event_counts", "edge_counts"
+    );
+    println!(
+        "  {}+{}+{}+{}+{}+{}",
+        "-".repeat(7),
+        "-".repeat(11),
+        "-".repeat(16),
+        "-".repeat(14),
+        "-".repeat(14),
+        "-".repeat(11)
     );
     for (i, m) in metrics.iter().enumerate() {
         println!(
-            "  round={} converged={} message_count={} event_counts={:?} edge_counts={:?} conflicts={:?}",
+            "  {:>6} | {:>9} | {:>14} | {:>12} | {:>12} | {}",
             i + 1,
             m.converged,
             m.message_count,
-            m.event_counts,
-            m.edge_counts,
-            m.conflict_counts,
+            join_counts(&m.event_counts),
+            join_counts(&m.edge_counts),
+            join_counts(&m.conflict_counts),
         );
     }
     println!("  log_entries={}", sim.log.len());
+}
+
+/// Renders a per-node count vector as a compact `a/b/c` string for table cells.
+fn join_counts(counts: &[usize]) -> String {
+    counts
+        .iter()
+        .map(|n| n.to_string())
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 fn write_scenario_json(label: &str, seed: u128, metrics: &[Metrics], log: &[String]) {

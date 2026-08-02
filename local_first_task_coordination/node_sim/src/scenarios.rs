@@ -226,8 +226,8 @@ pub fn print_multi_seed_summary(summaries: &[SeedSummary]) {
     println!(
         "  {}+{}+{}+{}",
         "-".repeat(7),
-        "-".repeat(18),
-        "-".repeat(16),
+        "-".repeat(19),
+        "-".repeat(17),
         "-".repeat(10)
     );
     for s in summaries {
