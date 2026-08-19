@@ -1,0 +1,5 @@
+# Route test binaries through a wrapper that reformats libtest output, so that
+# `cargo test` prints categorised suites. See scripts/test_runner.sh.
+# `cargo run` binaries are not affected — the wrapper execs them unchanged.
+[target.'cfg(all())']
+runner = "scripts/test_runner.sh"
