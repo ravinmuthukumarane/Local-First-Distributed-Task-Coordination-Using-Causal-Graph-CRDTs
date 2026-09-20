@@ -1,7 +1,5 @@
 # Local-First Distributed Task Coordination Using Causal-Graph CRDTs
 
-MSc Research Implementation — examiner submission README.
-
 ---
 
 ## 1. Project title and purpose
@@ -45,8 +43,8 @@ This is a systems / distributed-computing dissertation artefact. The research
 question concerns whether a causal-graph CRDT can provide correct, convergent
 task coordination for local-first applications under adverse network
 conditions. There is **no machine-learning component** — see
-[Section 13, Not applicable](#13-not-applicable-to-this-project) for how the
-generic submission checklist maps onto a systems project.
+[Section 13, Not applicable](#13-not-applicable-to-this-project) for what
+that means for the project's scope.
 
 ---
 
@@ -93,7 +91,7 @@ self-contained implementation instead (`node_sim/src/json_util.rs`,
 
 ```
 Local-First-Distributed-Task-Coordination-Using-Causal-Graph-CRDTs/
-├── README.md                        # ← this submission README
+├── README.md                        # ← project overview and usage guide
 └── local_first_task_coordination/   # The Cargo workspace (all source code lives here)
     ├── Cargo.toml                   # Workspace manifest
     ├── Cargo.lock                   # Pinned build (reproducibility)
@@ -176,8 +174,7 @@ cargo --version
 
 ### Step 2 — Obtain the code
 
-The submission already contains the full source. If working from the Git
-repository instead:
+Clone the repository:
 
 ```sh
 git clone <repository-url>
@@ -425,9 +422,9 @@ users, authentication, sessions, or accounts.
 
 ## 13. Not applicable to this project
 
-The generic submission checklist assumes a data-science / web-application
-shape. This is a systems research artefact, so several items do not apply and
-are flagged here for completeness:
+This is a systems research artefact rather than a data-science /
+web-application project, so several items commonly expected of a software
+project don't apply here, flagged for completeness:
 
 | Checklist item | Status |
 |---|---|
