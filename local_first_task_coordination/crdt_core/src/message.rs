@@ -6,7 +6,7 @@ use crate::Event;
 ///
 /// Events are stored in a `HashSet` so that duplicates are automatically
 /// deduplicated upon insertion.
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Message {
     /// The set of events carried by this message.
     pub events: HashSet<Event>,

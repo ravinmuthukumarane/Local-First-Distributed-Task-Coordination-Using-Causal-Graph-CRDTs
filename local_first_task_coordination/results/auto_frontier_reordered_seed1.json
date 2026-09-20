@@ -1,0 +1,56 @@
+{
+  "scenario": "auto_frontier_reordered",
+  "seed": 1,
+  "rounds": [
+    {
+      "round": 1,
+      "converged": true,
+      "message_count": 3,
+      "event_counts": [1, 1, 1],
+      "conflict_counts": [0, 0, 0],
+      "edge_counts": [0, 0, 0],
+      "convergence_round": 1
+    },
+    {
+      "round": 2,
+      "converged": true,
+      "message_count": 6,
+      "event_counts": [2, 2, 2],
+      "conflict_counts": [0, 0, 0],
+      "edge_counts": [1, 1, 1],
+      "convergence_round": 1
+    },
+    {
+      "round": 3,
+      "converged": true,
+      "message_count": 9,
+      "event_counts": [3, 3, 3],
+      "conflict_counts": [0, 0, 0],
+      "edge_counts": [2, 2, 2],
+      "convergence_round": 1
+    }
+  ],
+  "log": [
+    "BROADCAST sender=0 event_count=1",
+    "DELIVER node=0 events_in_graph=1",
+    "DELIVER node=1 events_in_graph=1",
+    "DELIVER node=2 events_in_graph=1",
+    "SNAPSHOT label=round1 node=0 events=1 exists=true claims=0 completions=0 conflict=false",
+    "SNAPSHOT label=round1 node=1 events=1 exists=true claims=0 completions=0 conflict=false",
+    "SNAPSHOT label=round1 node=2 events=1 exists=true claims=0 completions=0 conflict=false",
+    "BROADCAST sender=1 event_count=1",
+    "DELIVER node=0 events_in_graph=2",
+    "DELIVER node=1 events_in_graph=2",
+    "DELIVER node=2 events_in_graph=2",
+    "SNAPSHOT label=round2 node=0 events=2 exists=true claims=1 completions=0 conflict=false",
+    "SNAPSHOT label=round2 node=1 events=2 exists=true claims=1 completions=0 conflict=false",
+    "SNAPSHOT label=round2 node=2 events=2 exists=true claims=1 completions=0 conflict=false",
+    "BROADCAST sender=2 event_count=1",
+    "DELIVER node=0 events_in_graph=3",
+    "DELIVER node=1 events_in_graph=3",
+    "DELIVER node=2 events_in_graph=3",
+    "SNAPSHOT label=round3 node=0 events=3 exists=true claims=1 completions=1 conflict=false",
+    "SNAPSHOT label=round3 node=1 events=3 exists=true claims=1 completions=1 conflict=false",
+    "SNAPSHOT label=round3 node=2 events=3 exists=true claims=1 completions=1 conflict=false"
+  ]
+}

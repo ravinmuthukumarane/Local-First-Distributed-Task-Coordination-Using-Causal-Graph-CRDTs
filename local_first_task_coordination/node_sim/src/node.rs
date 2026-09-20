@@ -2,6 +2,8 @@ use crdt_core::causal_graph::CausalGraph;
 use crdt_core::message::Message;
 use crdt_core::{Event, EventId, NodeId, Operation, TaskId};
 
+use crate::simulation::EventCounter;
+
 /// A simulated distributed node with a local causal graph and message buffers.
 pub struct Node {
     /// This node's unique identifier.
@@ -38,7 +40,7 @@ impl Node {
     pub fn claim_task(&mut self, task_id: TaskId, event_id: EventId, parents: Vec<EventId>) {
         self.outbox.push(Event {
             event_id,
-            operation: Operation::Claim(task_id, self.node_id.clone()),
+            operation: Operation::Claim(task_id, self.node_id),
             causal_parents: parents,
         });
     }
@@ -47,9 +49,111 @@ impl Node {
     pub fn complete_task(&mut self, task_id: TaskId, event_id: EventId, parents: Vec<EventId>) {
         self.outbox.push(Event {
             event_id,
-            operation: Operation::Complete(task_id, self.node_id.clone()),
+            operation: Operation::Complete(task_id, self.node_id),
             causal_parents: parents,
         });
+    }
+
+    /// Draws the next id from `counter`, stages a `Create` event with it, and
+    /// returns the id so the caller can thread it into a later event's
+    /// `causal_parents` without generating the id separately.
+    ///
+    /// Prefer this over [`Self::create_task`] whenever the caller would
+    /// otherwise have to call `counter.next_id()` itself: routing every id
+    /// through this method removes the risk of two events being staged with
+    /// the same `EventId` by mistake (a plain typo when copying a `next_id()`
+    /// result, for example), since the counter is the only source of ids.
+    pub fn create_task_next(
+        &mut self,
+        task_id: TaskId,
+        counter: &mut EventCounter,
+        parents: Vec<EventId>,
+    ) -> EventId {
+        let event_id = counter.next_id();
+        self.create_task(task_id, event_id, parents);
+        event_id
+    }
+
+    /// Draws the next id from `counter`, stages a `Claim` event with it, and
+    /// returns the id. See [`Self::create_task_next`] for why this is
+    /// preferred over [`Self::claim_task`] at call sites that have a counter.
+    pub fn claim_task_next(
+        &mut self,
+        task_id: TaskId,
+        counter: &mut EventCounter,
+        parents: Vec<EventId>,
+    ) -> EventId {
+        let event_id = counter.next_id();
+        self.claim_task(task_id, event_id, parents);
+        event_id
+    }
+
+    /// Draws the next id from `counter`, stages a `Complete` event with it,
+    /// and returns the id. See [`Self::create_task_next`] for why this is
+    /// preferred over [`Self::complete_task`] at call sites that have a counter.
+    pub fn complete_task_next(
+        &mut self,
+        task_id: TaskId,
+        counter: &mut EventCounter,
+        parents: Vec<EventId>,
+    ) -> EventId {
+        let event_id = counter.next_id();
+        self.complete_task(task_id, event_id, parents);
+        event_id
+    }
+
+    /// Returns this node's current causal frontier for `task_id`: the ids of
+    /// events (for this task) that this node knows of and that have no known
+    /// child within the task's history — the "heads" of its local view.
+    ///
+    /// Considers both `self.graph` (events already merged in) and
+    /// `self.outbox` (this node's own not-yet-delivered writes), so a node's
+    /// own pending actions are visible to itself immediately rather than
+    /// only after a full broadcast/deliver round-trip. Passing this frontier
+    /// as `causal_parents` for a new event makes it depend on everything
+    /// this node currently knows about the task — the same rule a real
+    /// client would apply automatically instead of a scenario wiring
+    /// `causal_parents` by hand.
+    ///
+    /// For a task this node has never seen, the frontier is empty, which is
+    /// exactly the right `causal_parents` for that task's `Create` event.
+    pub fn frontier_for(&self, task_id: TaskId) -> Vec<EventId> {
+        let mut known = self.graph.clone();
+        for event in &self.outbox {
+            known.insert(event.clone());
+        }
+
+        let sub = task_model::extract_task_subgraph(&known, &task_id);
+        sub.events()
+            .keys()
+            .filter(|id| {
+                sub.children_of(id)
+                    .is_none_or(|children| children.is_empty())
+            })
+            .copied()
+            .collect()
+    }
+
+    /// Stages a `Create` event whose `causal_parents` is this node's current
+    /// frontier for `task_id` (see [`Self::frontier_for`]) and whose id comes
+    /// from `counter`. Returns the new event's id.
+    pub fn create_task_auto(&mut self, task_id: TaskId, counter: &mut EventCounter) -> EventId {
+        let parents = self.frontier_for(task_id);
+        self.create_task_next(task_id, counter, parents)
+    }
+
+    /// Stages a `Claim` event whose `causal_parents` is this node's current
+    /// frontier for `task_id`. See [`Self::create_task_auto`].
+    pub fn claim_task_auto(&mut self, task_id: TaskId, counter: &mut EventCounter) -> EventId {
+        let parents = self.frontier_for(task_id);
+        self.claim_task_next(task_id, counter, parents)
+    }
+
+    /// Stages a `Complete` event whose `causal_parents` is this node's
+    /// current frontier for `task_id`. See [`Self::create_task_auto`].
+    pub fn complete_task_auto(&mut self, task_id: TaskId, counter: &mut EventCounter) -> EventId {
+        let parents = self.frontier_for(task_id);
+        self.complete_task_next(task_id, counter, parents)
     }
 
     /// Pushes a single event into the inbox.
@@ -89,15 +193,152 @@ mod tests {
     }
 
     #[test]
+    fn create_task_next_draws_from_counter_and_returns_id() {
+        let mut n = node();
+        let mut counter = EventCounter::new(5);
+
+        let returned = n.create_task_next(TaskId(1), &mut counter, vec![]);
+
+        assert_eq!(returned, EventId(5));
+        assert_eq!(n.outbox.len(), 1);
+        assert_eq!(n.outbox[0].event_id, EventId(5));
+        assert_eq!(n.outbox[0].operation, Operation::Create(TaskId(1)));
+    }
+
+    #[test]
+    fn claim_and_complete_task_next_advance_shared_counter() {
+        let mut n = node();
+        let mut counter = EventCounter::new(1);
+
+        let create_id = n.create_task_next(TaskId(1), &mut counter, vec![]);
+        let claim_id = n.claim_task_next(TaskId(1), &mut counter, vec![create_id]);
+        let complete_id = n.complete_task_next(TaskId(1), &mut counter, vec![claim_id]);
+
+        // Each _next call draws a fresh id from the same counter, so no two
+        // staged events collide even though the caller never picks an id itself.
+        assert_eq!(
+            [create_id, claim_id, complete_id],
+            [EventId(1), EventId(2), EventId(3)]
+        );
+        assert_eq!(n.outbox.len(), 3);
+        assert_eq!(
+            n.outbox[1].operation,
+            Operation::Claim(TaskId(1), n.node_id)
+        );
+        assert_eq!(
+            n.outbox[2].operation,
+            Operation::Complete(TaskId(1), n.node_id)
+        );
+    }
+
+    #[test]
+    fn frontier_for_unknown_task_is_empty() {
+        let n = node();
+        assert!(n.frontier_for(TaskId(1)).is_empty());
+    }
+
+    #[test]
+    fn create_task_auto_has_no_parents_for_a_new_task() {
+        let mut n = node();
+        let mut counter = EventCounter::new(1);
+
+        n.create_task_auto(TaskId(1), &mut counter);
+
+        assert!(n.outbox[0].causal_parents.is_empty());
+    }
+
+    #[test]
+    fn claim_task_auto_cites_pending_outbox_create_as_parent() {
+        // create_task_auto only stages the Create in the outbox — it hasn't
+        // reached self.graph yet — so claim_task_auto must still see it via
+        // the outbox to pick it up as a parent.
+        let mut n = node();
+        let mut counter = EventCounter::new(1);
+
+        let create_id = n.create_task_auto(TaskId(1), &mut counter);
+        n.claim_task_auto(TaskId(1), &mut counter);
+
+        assert_eq!(n.outbox[1].causal_parents, vec![create_id]);
+    }
+
+    #[test]
+    fn frontier_advances_past_events_that_have_children() {
+        let mut n = node();
+        let mut counter = EventCounter::new(1);
+
+        let create_id = n.create_task_auto(TaskId(1), &mut counter);
+        assert_eq!(n.frontier_for(TaskId(1)), vec![create_id]);
+
+        let claim_id = n.claim_task_auto(TaskId(1), &mut counter);
+        // create_id now has a child (the claim), so it drops out of the
+        // frontier in favor of the claim, which has none yet.
+        assert_eq!(n.frontier_for(TaskId(1)), vec![claim_id]);
+    }
+
+    #[test]
+    fn frontier_includes_events_already_merged_into_the_graph() {
+        let mut n = node();
+        n.graph.insert(Event {
+            event_id: EventId(1),
+            operation: Operation::Create(TaskId(1)),
+            causal_parents: vec![],
+        });
+
+        assert_eq!(n.frontier_for(TaskId(1)), vec![EventId(1)]);
+    }
+
+    #[test]
+    fn frontier_has_multiple_heads_for_concurrent_claims() {
+        let mut n = node();
+        n.graph.insert(Event {
+            event_id: EventId(1),
+            operation: Operation::Create(TaskId(1)),
+            causal_parents: vec![],
+        });
+        n.graph.insert(Event {
+            event_id: EventId(2),
+            operation: Operation::Claim(TaskId(1), NodeId(10)),
+            causal_parents: vec![EventId(1)],
+        });
+        n.graph.insert(Event {
+            event_id: EventId(3),
+            operation: Operation::Claim(TaskId(1), NodeId(20)),
+            causal_parents: vec![EventId(1)],
+        });
+
+        let mut frontier = n.frontier_for(TaskId(1));
+        frontier.sort_by_key(|id| id.0);
+        assert_eq!(frontier, vec![EventId(2), EventId(3)]);
+    }
+
+    #[test]
+    fn auto_chain_matches_manually_wired_causal_parents() {
+        // Building a Create -> Claim -> Complete chain via the _auto methods
+        // should produce exactly the same causal_parents a scenario would
+        // have wired by hand.
+        let mut n = node();
+        let mut counter = EventCounter::new(1);
+
+        let create_id = n.create_task_auto(TaskId(1), &mut counter);
+        let claim_id = n.claim_task_auto(TaskId(1), &mut counter);
+        let complete_id = n.complete_task_auto(TaskId(1), &mut counter);
+
+        assert_eq!(n.outbox[0].causal_parents, Vec::<EventId>::new());
+        assert_eq!(n.outbox[1].causal_parents, vec![create_id]);
+        assert_eq!(n.outbox[2].causal_parents, vec![claim_id]);
+        assert_eq!(complete_id, n.outbox[2].event_id);
+    }
+
+    #[test]
     fn two_nodes_start_empty_with_distinct_ids() {
         let a = Node::new(NodeId(1));
         let b = Node::new(NodeId(2));
 
-        assert!(a.graph.events.is_empty());
+        assert!(a.graph.events().is_empty());
         assert!(a.outbox.is_empty());
         assert!(a.inbox.is_empty());
 
-        assert!(b.graph.events.is_empty());
+        assert!(b.graph.events().is_empty());
         assert!(b.outbox.is_empty());
         assert!(b.inbox.is_empty());
 
@@ -153,7 +394,7 @@ mod tests {
         n.create_task(TaskId(1), EventId(1), vec![]);
         n.claim_task(TaskId(1), EventId(2), vec![EventId(1)]);
 
-        assert!(n.graph.events.is_empty());
+        assert!(n.graph.events().is_empty());
     }
 
     #[test]
@@ -161,7 +402,7 @@ mod tests {
         let mut n = node();
         n.process_inbox();
 
-        assert!(n.graph.events.is_empty());
+        assert!(n.graph.events().is_empty());
         assert!(n.inbox.is_empty());
     }
 
@@ -175,7 +416,7 @@ mod tests {
         });
         n.process_inbox();
 
-        assert_eq!(n.graph.events.len(), 1);
+        assert_eq!(n.graph.events().len(), 1);
         assert!(n.inbox.is_empty());
     }
 
@@ -191,7 +432,7 @@ mod tests {
         }
         n.process_inbox();
 
-        assert_eq!(n.graph.events.len(), 3);
+        assert_eq!(n.graph.events().len(), 3);
         assert!(n.inbox.is_empty());
     }
 

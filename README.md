@@ -28,8 +28,9 @@ The deliverable is:
 1. A reusable CRDT + task-model **library** (the coordination logic), and
 2. A deterministic **simulation harness** that drives the library through a set
    of network scenarios (clean network, short/long partitions, high
-   contention), collects convergence and conflict metrics, and writes them to
-   JSON for analysis.
+   contention, and reordered delivery with auto-wired causal parents),
+   collects convergence and conflict metrics, and writes them to JSON for
+   analysis.
 
 Concurrent, conflicting actions (e.g. two nodes claiming the same task without
 having seen each other) are **never silently dropped** — the system records
@@ -44,7 +45,7 @@ This is a systems / distributed-computing dissertation artefact. The research
 question concerns whether a causal-graph CRDT can provide correct, convergent
 task coordination for local-first applications under adverse network
 conditions. There is **no machine-learning component** — see
-[Section 12, Not applicable](#12-not-applicable-to-this-project) for how the
+[Section 13, Not applicable](#13-not-applicable-to-this-project) for how the
 generic submission checklist maps onto a systems project.
 
 ---
@@ -61,7 +62,10 @@ generic submission checklist maps onto a systems project.
 
 The absence of external dependencies is deliberate: it keeps the CRDT
 correctness argument self-contained and makes the build fully reproducible
-offline.
+offline. Where a dependency would ordinarily be reached for — JSON output, a
+PRNG for the reordered-delivery scenario — the project uses a small
+self-contained implementation instead (`node_sim/src/json_util.rs`,
+`node_sim/src/rng.rs`) rather than pulling in `serde_json` or `rand`.
 
 ---
 
@@ -100,34 +104,55 @@ Local-First-Distributed-Task-Coordination-Using-Causal-Graph-CRDTs/
     │   ├── src/lib.rs               #   IDs, Operation, Event
     │   ├── src/causal_graph.rs      #   CausalGraph: insert + merge (the CRDT join)
     │   ├── src/message.rs           #   Message envelope for node-to-node sync
-    │   └── tests/                   #   merge_properties.rs, causal_graph_integration.rs
+    │   └── tests/                   #   merge_properties.rs, merge_fuzz.rs, causal_graph_integration.rs
     ├── task_model/                  # Domain logic on top of the CRDT
-    │   ├── src/lib.rs               #   extract_task_subgraph, derive_task_state
+    │   ├── src/lib.rs               #   extract_task_subgraph, derive_task_state, resolve (conflict resolution)
     │   └── tests/semantic_validation.rs
     └── node_sim/                    # Simulation harness (the runnable binary)
-        ├── src/node.rs              #   Node: local graph + inbox/outbox
+        ├── src/node.rs              #   Node: local graph + inbox/outbox + causal frontier tracking
         ├── src/simulation.rs        #   Simulation: routing, partitions, metrics, logging
-        ├── src/scenarios.rs         #   The four experiment scenarios + multi-seed runner
+        ├── src/scenarios.rs         #   The five experiment scenarios + multi-seed runner
+        ├── src/json_util.rs         #   Hand-rolled JSON string/array escaping helpers
+        ├── src/rng.rs               #   Deterministic xorshift PRNG (reordered-delivery scenario)
         └── src/main.rs              #   Entry point: runs all scenarios, writes JSON
 ```
 
 All generated output lives in **one place**: `local_first_task_coordination/results/`.
-The eight files there are committed as sample output / test evidence; re-running
+The ten files there are committed as sample output / test evidence; re-running
 the program overwrites them with byte-identical content (the run is
 deterministic).
 
 **The three crates (a layered design):**
 
 - **`crdt_core`** — the foundation. Defines `TaskId`, `NodeId`, `EventId` (all
-  `u128` newtypes), the `Operation` enum (`Create` / `Claim` / `Complete`), the
-  immutable `Event` struct, the append-only `CausalGraph` with `insert` and
-  `merge`, and the `Message` envelope used to ship events between nodes.
-- **`task_model`** — sits on `crdt_core`. Given a graph and a task ID it extracts
-  the task's sub-graph and derives a `TaskState` (does the task exist, who
-  claimed it, who completed it, is there a conflict).
+  `u128` newtypes, `Copy`), the `Operation` enum (`Create` / `Claim` /
+  `Complete`), the immutable `Event` struct, the append-only `CausalGraph`
+  with `insert` and `merge`, and the `Message` envelope used to ship events
+  between nodes. `CausalGraph`'s `events`/`children` maps are private —
+  callers read them through accessors (`events()`, `children_of()`, …) so the
+  edge map can't be pushed out of sync with the events it indexes. A
+  `by_task` index, maintained incrementally on `insert`, lets task-scoped
+  lookups (used by `task_model::extract_task_subgraph`) skip scanning every
+  event in the graph.
+- **`task_model`** — sits on `crdt_core`. Given a graph and a task ID it
+  extracts the task's sub-graph and derives a `TaskState` (does the task
+  exist, who claimed it, who completed it, is there a conflict). It also
+  **resolves** conflicts, not just detects them: `TaskState.resolved_claimant`
+  / `resolved_completer` give the single `NodeId` every node converges on as
+  the winner — a claim that causally supersedes all others wins outright; a
+  genuine (concurrent) conflict is broken deterministically by lowest
+  `NodeId` — so every node picks the same winner regardless of delivery order.
 - **`node_sim`** — the experiment harness. A `Node` owns a local graph plus an
   outbox/inbox; a `Simulation` wires several nodes together, routes messages,
-  can partition and heal the network, and collects per-round `Metrics`.
+  can partition and heal the network, and collects per-round `Metrics`. A
+  `Node` can also track its own **causal frontier** per task
+  (`frontier_for`) and auto-wire `causal_parents` from it
+  (`create_task_auto` / `claim_task_auto` / `complete_task_auto`), so a
+  scenario no longer has to compute causal parents by hand. `Simulation`
+  additionally supports **randomized delivery order**
+  (`deliver_all_shuffled`, backed by a small seeded PRNG in `rng.rs`) to
+  demonstrate convergence under out-of-order arrival empirically rather than
+  only asserting it from the merge-law tests.
 
 ---
 
@@ -186,7 +211,7 @@ experiment parameters are set directly in code and are intentionally simple:
 |---|---|---|
 | Single-run seed | `node_sim/src/main.rs` (`let seed = 1u128;`) | `1` |
 | Multi-seed range | `node_sim/src/main.rs` (`let seeds = (1..=10)`) | seeds `1..=10` |
-| Scenario set | `node_sim/src/scenarios.rs` | four scenarios (see below) |
+| Scenario set | `node_sim/src/scenarios.rs` | five scenarios (see below) |
 
 The **seed** drives a deterministic `EventCounter`, so re-running with the same
 seed reproduces byte-identical results — this is what makes the evaluation
@@ -204,7 +229,7 @@ cargo run
 
 This:
 
-1. Runs the four scenarios at **seed 1**, printing a round-by-round summary to
+1. Runs the five scenarios at **seed 1**, printing a round-by-round summary to
    the terminal.
 2. Re-runs each scenario across **seeds 1–10** and prints an aggregate table.
 3. Writes all JSON result files into a **`results/` directory** (created
@@ -220,24 +245,27 @@ This:
 | `short_partition` | One node cut off for 2 rounds, then reconnected and caught up |
 | `long_partition` | One node cut off for 5 rounds, then reconnected and caught up |
 | `high_contention` | All nodes isolated, each claims the same task, then reconnect → conflict is detected |
+| `auto_frontier_reordered` | Same Create → Claim → Complete chain as `no_partition`, but `causal_parents` are auto-wired from each node's own causal frontier instead of by hand, and every round is delivered in a seeded-random order instead of broadcast order — demonstrating that convergence holds regardless of both |
 
 ### Output files
 
 Per-seed traces (in `results/`):
 
 ```
-no_partition_seed1.json      short_partition_seed1.json
-long_partition_seed1.json    high_contention_seed1.json
+no_partition_seed1.json              long_partition_seed1.json
+short_partition_seed1.json           high_contention_seed1.json
+auto_frontier_reordered_seed1.json
 ```
 
 Multi-seed aggregates (in `results/`):
 
 ```
-no_partition_multi_seed.json      short_partition_multi_seed.json
-long_partition_multi_seed.json    high_contention_multi_seed.json
+no_partition_multi_seed.json              long_partition_multi_seed.json
+short_partition_multi_seed.json           high_contention_multi_seed.json
+auto_frontier_reordered_multi_seed.json
 ```
 
-Pre-generated copies of all eight files are committed in
+Pre-generated copies of all ten files are committed in
 `local_first_task_coordination/results/` as sample output/test evidence, so
 results can be inspected without rebuilding.
 
@@ -251,18 +279,19 @@ Run the full suite from inside `local_first_task_coordination/`:
 cargo test
 ```
 
-**Expected result: 84 tests, all passing** (verified with the toolchain in
+**Expected result: 125 tests, all passing** (verified with the toolchain in
 Section 4), distributed as:
 
 | Location | Tests | Focus |
 |---|---:|---|
-| `crdt_core` unit tests | 15 | IDs, `Event`, `insert`, `merge`, dedup, `Message` |
-| `crdt_core/tests/merge_properties.rs` | 3 | merge is **idempotent, commutative, associative** (the CRDT laws) |
+| `crdt_core` unit tests | 18 | IDs, `Event`, `insert`, `merge`, dedup, `Message`, the `by_task` index |
+| `crdt_core/tests/merge_properties.rs` | 3 | merge is **idempotent, commutative, associative** (the CRDT laws), on hand-picked graphs |
+| `crdt_core/tests/merge_fuzz.rs` | 4 | the same CRDT laws, re-checked over 150 random graphs per test (600 total checks) |
 | `crdt_core/tests/causal_graph_integration.rs` | 6 | multi-event graph behaviour |
-| `task_model` unit tests | 12 | sub-graph extraction, state derivation, conflict detection |
+| `task_model` unit tests | 20 | sub-graph extraction, state derivation, causal-ancestry conflict detection, deterministic conflict *resolution* |
 | `task_model/tests/semantic_validation.rs` | 6 | end-to-end semantics (e.g. two concurrent claims → conflict) |
-| `node_sim` unit tests | 42 | node buffers, broadcast/deliver, partition/heal, metrics, logging |
-| **Total** | **84** | |
+| `node_sim` unit tests | 68 | node buffers, broadcast/deliver, partition/heal, metrics, logging, JSON escaping, causal frontier tracking, the seeded PRNG, the reordered-delivery scenario |
+| **Total** | **125** | |
 
 The pre-generated JSON files in `local_first_task_coordination/results/` are the
 recorded output of a successful run and serve as reproducible test evidence.
@@ -322,9 +351,27 @@ seeds plus `always_converged`.
 - **Merge** — the CRDT join. Merging graph *A* into *B* gives the same result as
   merging *B* into *A*, and merging twice changes nothing. This is what
   guarantees convergence.
-- **Conflict detection** — a task with more than one concurrent claim (or
+- **Conflict detection** — a task with more than one *concurrent* claim (or
   completion) is derived as a conflict; both sides are retained, never
-  overwritten.
+  overwritten. Concurrency is decided from the causal graph itself: two
+  claims conflict only if neither is a causal ancestor of the other, so a
+  legitimate sequential re-claim (e.g. staged after the original claimant's
+  `Complete`) is not mistaken for a conflict.
+- **Conflict resolution** — beyond detecting a conflict, `task_model::resolve`
+  picks a single deterministic winner: among the claims nothing else
+  causally supersedes, the lowest `NodeId` wins. Every node that has
+  observed the same events resolves to the same winner regardless of the
+  order the events arrived in — the resolution is exposed on `TaskState` as
+  `resolved_claimant` / `resolved_completer`.
+- **Causal frontier tracking** — a `Node` can compute its own frontier for a
+  task (the events it knows of that nothing else it knows of causally
+  follows) and use it to auto-wire new events' `causal_parents`, instead of
+  a scenario computing them by hand.
+- **Delivery-order independence** — because merge is commutative and
+  idempotent, convergence does not depend on the order messages are
+  delivered in. The `auto_frontier_reordered` scenario delivers messages in
+  a seeded-random order each round to demonstrate this empirically rather
+  than only asserting it from the merge-law tests.
 
 ---
 
@@ -349,13 +396,21 @@ users, authentication, sessions, or accounts.
   are modelled in a single deterministic in-memory process. There is no real
   transport (TCP/UDP), no serialization-over-the-wire, and no wall-clock
   timing.
-- **Manual causal parents / event IDs.** In the harness, event IDs come from a
-  seeded counter and causal parents are wired explicitly per scenario, rather
-  than being generated automatically from a running node's local state.
-- **Conflict *detection*, not resolution.** The system faithfully records and
-  flags conflicting claims/completions but does not apply an
-  application-level policy to pick a winner — that is left to the consuming
-  application.
+- **Manual causal parents in most scenarios.** Event IDs always come from a
+  seeded counter (`Node::create_task_next` / `claim_task_next` /
+  `complete_task_next`, or the `_auto` variants below, draw directly from
+  it). `Node::frontier_for` and the `create_task_auto` / `claim_task_auto` /
+  `complete_task_auto` methods can auto-wire `causal_parents` from a node's
+  own local view instead — used by the `auto_frontier_reordered` scenario —
+  but the four original scenarios still wire `causal_parents` by hand, since
+  their specific hand-crafted DAG shapes (e.g. the diamond in
+  `high_contention`) are part of what they're demonstrating.
+- **Conflict resolution is a fixed policy, not pluggable.** `task_model::resolve`
+  (surfaced as `TaskState.resolved_claimant` / `resolved_completer`) picks a
+  winner deterministically — lowest `NodeId` breaks a genuine tie — but that
+  policy is not configurable per application. A consumer wanting a different
+  tie-break (e.g. by timestamp, or a priority order) has to implement it
+  against the maximal-claims logic itself.
 - **Unbounded, ever-growing graph.** Events are append-only with no compaction,
   garbage collection, or snapshotting, so memory grows with history. This is
   acceptable for the bounded experiments here but not for long-lived
@@ -381,7 +436,7 @@ are flagged here for completeness:
 | Front-end / back-end / database components | **N/A** — no UI, server, or database; the system is a library + CLI simulation |
 | Database scripts and schemas | **N/A** — no persistent datastore |
 | Trained model files | **N/A** |
-| Sample input data / dataset preparation | The "dataset" is the generated simulation input; the eight committed `results/*.json` files are sample **output**. No external dataset download is required. |
+| Sample input data / dataset preparation | The "dataset" is the generated simulation input; the ten committed `results/*.json` files are sample **output**. No external dataset download is required. |
 | Configuration files | **N/A** — parameters are in-code (Section 7) |
 | API integration instructions | **N/A** — no external or internal API |
 | Deployment configuration | **N/A** — runs locally via `cargo run` |
@@ -389,7 +444,17 @@ are flagged here for completeness:
 
 ---
 
-## 14. Quick start (summary)
+## 14. License
+
+Source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE):
+free to use, modify, and distribute for personal, academic, and research
+purposes. Use in a commercial product or service requires a separate
+commercial license — contact ravinmuthukumarane@gmail.com. See
+[LICENSE](LICENSE) for the full terms.
+
+---
+
+## 15. Quick start (summary)
 
 ```sh
 # 1. Ensure Rust ≥ 1.85 is installed (https://rustup.rs/)
@@ -400,6 +465,6 @@ cd local_first_task_coordination
 
 # 3. Build, test, run
 cargo build
-cargo test      # 84 tests, all passing
+cargo test      # 125 tests, all passing
 cargo run       # runs all scenarios and writes result JSON to the current directory
 ```

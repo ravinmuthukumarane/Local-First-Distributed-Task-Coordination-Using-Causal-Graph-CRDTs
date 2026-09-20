@@ -5,6 +5,7 @@ use crdt_core::{EventId, NodeId, TaskId};
 use task_model::TaskState;
 
 use crate::node::Node;
+use crate::rng::Xorshift64;
 
 /// A snapshot of simulation state collected at the end of one delivery round.
 pub struct Metrics {
@@ -97,11 +98,28 @@ impl Simulation {
             log_entries.push(format!(
                 "DELIVER node={} events_in_graph={}",
                 i,
-                node.graph.events.len()
+                node.graph.events().len()
             ));
         }
         self.messages_delivered += delivered;
         self.log.extend(log_entries);
+    }
+
+    /// Like [`Self::deliver_all`], but first shuffles each node's pending
+    /// message queue using `rng`, so messages are drained (and their events
+    /// inserted into the node's local graph) in a randomized order instead
+    /// of the order they were broadcast in.
+    ///
+    /// Because [`crdt_core::causal_graph::CausalGraph::merge`]/`insert` are
+    /// commutative and idempotent, the final converged state is unaffected
+    /// by delivery order — this method exists to demonstrate that
+    /// robustness empirically (see `scenarios::scenario_reordered_delivery`)
+    /// rather than only assert it from the merge-law tests.
+    pub fn deliver_all_shuffled(&mut self, rng: &mut Xorshift64) {
+        for queue in self.message_queues.iter_mut() {
+            rng.shuffle(queue);
+        }
+        self.deliver_all();
     }
 
     /// Creates a simulation with one node per supplied `NodeId`.
@@ -122,7 +140,7 @@ impl Simulation {
     /// `convergence_round` is always `None` here; call [`Self::find_convergence_round`]
     /// after all rounds are complete and stamp the value back with `iter_mut`.
     pub fn collect_metrics(&self, task_id: &TaskId) -> Metrics {
-        let event_counts = self.nodes.iter().map(|n| n.graph.events.len()).collect();
+        let event_counts = self.nodes.iter().map(|n| n.graph.events().len()).collect();
 
         let conflict_counts = self
             .nodes
@@ -130,13 +148,17 @@ impl Simulation {
             .map(|n| task_model::derive_task_state(&n.graph, task_id).has_conflict as usize)
             .collect();
 
-        let edge_counts = self.nodes.iter().map(|n| n.graph.children.len()).collect();
+        let edge_counts = self
+            .nodes
+            .iter()
+            .map(|n| n.graph.children().len())
+            .collect();
 
         let converged = {
             let sets: Vec<HashSet<&EventId>> = self
                 .nodes
                 .iter()
-                .map(|n| n.graph.events.keys().collect())
+                .map(|n| n.graph.events().keys().collect())
                 .collect();
             sets.windows(2).all(|w| w[0] == w[1])
         };
@@ -210,7 +232,6 @@ impl Simulation {
     }
 
     /// Derives the task state for one node without mutating the simulation.
-    #[allow(dead_code)]
     pub fn derive_state(&self, node_index: usize, task_id: &TaskId) -> TaskState {
         task_model::derive_task_state(&self.nodes[node_index].graph, task_id)
     }
@@ -227,7 +248,7 @@ impl Simulation {
                     "SNAPSHOT label={} node={} events={} exists={} claims={} completions={} conflict={}",
                     label,
                     i,
-                    n.graph.events.len(),
+                    n.graph.events().len(),
                     state.exists,
                     state.claims.len(),
                     state.completions.len(),
@@ -271,8 +292,8 @@ mod tests {
 
         assert!(sim.message_queues[0].is_empty());
         assert!(sim.message_queues[1].is_empty());
-        assert_eq!(sim.nodes[0].graph.events.len(), 1);
-        assert_eq!(sim.nodes[1].graph.events.len(), 1);
+        assert_eq!(sim.nodes[0].graph.events().len(), 1);
+        assert_eq!(sim.nodes[1].graph.events().len(), 1);
     }
 
     #[test]
@@ -490,8 +511,7 @@ mod tests {
         let mut sim = Simulation::new(vec![NodeId(1), NodeId(2), NodeId(3)]);
         sim.log_state_snapshot(&TaskId(1), "check");
 
-        let snapshot_entries: Vec<_> =
-            sim.log.iter().filter(|e| e.contains("SNAPSHOT")).collect();
+        let snapshot_entries: Vec<_> = sim.log.iter().filter(|e| e.contains("SNAPSHOT")).collect();
         assert_eq!(snapshot_entries.len(), 3);
     }
 
@@ -509,14 +529,9 @@ mod tests {
             .position(|e| e.contains("BROADCAST"))
             .unwrap();
         let first_deliver_pos = sim.log.iter().position(|e| e.contains("DELIVER")).unwrap();
-        let first_snapshot_pos = sim
-            .log
-            .iter()
-            .position(|e| e.contains("SNAPSHOT"))
-            .unwrap();
+        let first_snapshot_pos = sim.log.iter().position(|e| e.contains("SNAPSHOT")).unwrap();
 
         assert!(broadcast_pos < first_deliver_pos);
         assert!(first_deliver_pos < first_snapshot_pos);
     }
-
 }

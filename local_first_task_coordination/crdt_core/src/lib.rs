@@ -2,19 +2,19 @@ pub mod causal_graph;
 pub mod message;
 
 /// Unique identifier for a task, backed by a `u128`.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct TaskId(pub u128);
 
 /// Unique identifier for a node in the distributed system, backed by a `u128`.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct NodeId(pub u128);
 
 /// Unique identifier for a causal event, backed by a `u128`.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct EventId(pub u128);
 
 /// A task lifecycle operation carried by a causal event.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Operation {
     /// Creates a new task identified by the given `TaskId`.
     Create(TaskId),
@@ -53,9 +53,9 @@ mod tests {
         let mut node_set: HashSet<NodeId> = HashSet::new();
         let mut event_set: HashSet<EventId> = HashSet::new();
 
-        task_set.insert(task_id.clone());
-        node_set.insert(node_id.clone());
-        event_set.insert(event_id.clone());
+        task_set.insert(task_id);
+        node_set.insert(node_id);
+        event_set.insert(event_id);
 
         assert!(task_set.contains(&task_id));
         assert!(node_set.contains(&node_id));

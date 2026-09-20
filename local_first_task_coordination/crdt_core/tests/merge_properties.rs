@@ -28,15 +28,15 @@ fn idempotence() {
         event(3, Operation::Complete(TaskId(1), NodeId(1)), vec![2]),
     ]);
 
-    let before_len = a.events.len();
-    let before_children: HashSet<EventId> = a.children.keys().cloned().collect();
+    let before_len = a.events().len();
+    let before_children: HashSet<EventId> = a.children().keys().cloned().collect();
 
     let mut a_mut = a.clone();
     let a2 = a.clone();
     a_mut.merge(&a2);
 
-    assert_eq!(a_mut.events.len(), before_len);
-    let after_children: HashSet<EventId> = a_mut.children.keys().cloned().collect();
+    assert_eq!(a_mut.events().len(), before_len);
+    let after_children: HashSet<EventId> = a_mut.children().keys().cloned().collect();
     assert_eq!(after_children, before_children);
 }
 
@@ -58,10 +58,10 @@ fn commutativity() {
     let mut right = b.clone();
     right.merge(&a);
 
-    assert_eq!(left.events.len(), right.events.len());
+    assert_eq!(left.events().len(), right.events().len());
 
-    let left_keys: HashSet<EventId> = left.events.keys().cloned().collect();
-    let right_keys: HashSet<EventId> = right.events.keys().cloned().collect();
+    let left_keys: HashSet<EventId> = left.events().keys().cloned().collect();
+    let right_keys: HashSet<EventId> = right.events().keys().cloned().collect();
     assert_eq!(left_keys, right_keys);
 }
 
@@ -92,6 +92,6 @@ fn associativity() {
     let mut right = a.clone();
     right.merge(&bc);
 
-    assert_eq!(left.events, right.events);
-    assert_eq!(left.children, right.children);
+    assert_eq!(left.events(), right.events());
+    assert_eq!(left.children(), right.children());
 }
