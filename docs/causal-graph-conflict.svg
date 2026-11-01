@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" font-family="Inter, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="630" rx="18" fill="#f8fafc"/>
+
+  <text x="60" y="62" font-size="30" font-weight="700" fill="#0f172a">Local-first task coordination with causal-graph CRDTs</text>
+  <text x="60" y="94" font-size="17" fill="#475569">No server, no coordinator, no locks. Nodes act offline and still agree once they reconnect.</text>
+
+  <!-- Panel 1 -->
+  <rect x="60" y="125" width="340" height="415" rx="14" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5"/>
+  <circle cx="88" cy="160" r="14" fill="#0f172a"/>
+  <text x="88" y="165" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+  <text x="112" y="166" font-size="18" font-weight="700" fill="#0f172a">Offline, no contact</text>
+
+  <text x="145" y="212" font-size="15" font-weight="700" fill="#2563eb" text-anchor="middle">Node 1</text>
+  <text x="315" y="212" font-size="15" font-weight="700" fill="#d97706" text-anchor="middle">Node 2</text>
+
+  <rect x="85" y="228" width="120" height="40" rx="8" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+  <text x="145" y="253" font-size="14" fill="#0f172a" text-anchor="middle">Create task</text>
+  <line x1="145" y1="268" x2="145" y2="316" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)"/>
+  <rect x="85" y="318" width="120" height="40" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
+  <text x="145" y="343" font-size="14" fill="#1e3a8a" text-anchor="middle">Claim by N1</text>
+
+  <rect x="255" y="228" width="120" height="40" rx="8" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+  <text x="315" y="253" font-size="14" fill="#0f172a" text-anchor="middle">Create task</text>
+  <line x1="315" y1="268" x2="315" y2="316" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)"/>
+  <rect x="255" y="318" width="120" height="40" rx="8" fill="#fffbeb" stroke="#d97706" stroke-width="2"/>
+  <text x="315" y="343" font-size="14" fill="#78350f" text-anchor="middle">Claim by N2</text>
+
+  <line x1="230" y1="195" x2="230" y2="380" stroke="#dc2626" stroke-width="2" stroke-dasharray="6 6"/>
+  <text x="230" y="400" font-size="13" font-weight="600" fill="#dc2626" text-anchor="middle">partition</text>
+
+  <text x="230" y="452" font-size="14" fill="#475569" text-anchor="middle">Both nodes claim the same task.</text>
+  <text x="230" y="474" font-size="14" fill="#475569" text-anchor="middle">Neither has seen the other's claim.</text>
+
+  <!-- Panel 2 -->
+  <rect x="430" y="125" width="340" height="415" rx="14" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5"/>
+  <circle cx="458" cy="160" r="14" fill="#0f172a"/>
+  <text x="458" y="165" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  <text x="482" y="166" font-size="18" font-weight="700" fill="#0f172a">Reconnect and merge</text>
+
+  <rect x="540" y="228" width="120" height="40" rx="8" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+  <text x="600" y="253" font-size="14" fill="#0f172a" text-anchor="middle">Create task</text>
+  <line x1="585" y1="268" x2="530" y2="316" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)"/>
+  <line x1="615" y1="268" x2="670" y2="316" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)"/>
+  <rect x="455" y="318" width="120" height="40" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
+  <text x="515" y="343" font-size="14" fill="#1e3a8a" text-anchor="middle">Claim by N1</text>
+  <rect x="625" y="318" width="120" height="40" rx="8" fill="#fffbeb" stroke="#d97706" stroke-width="2"/>
+  <text x="685" y="343" font-size="14" fill="#78350f" text-anchor="middle">Claim by N2</text>
+  <text x="600" y="390" font-size="13" font-weight="600" fill="#dc2626" text-anchor="middle">concurrent: neither is an ancestor of the other</text>
+
+  <text x="600" y="452" font-size="14" fill="#475569" text-anchor="middle">Merge is a set union of events.</text>
+  <text x="600" y="474" font-size="14" fill="#475569" text-anchor="middle">Idempotent, commutative, associative:</text>
+  <text x="600" y="496" font-size="14" fill="#475569" text-anchor="middle">same result in any delivery order.</text>
+
+  <!-- Panel 3 -->
+  <rect x="800" y="125" width="340" height="415" rx="14" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5"/>
+  <circle cx="828" cy="160" r="14" fill="#0f172a"/>
+  <text x="828" y="165" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+  <text x="852" y="166" font-size="18" font-weight="700" fill="#0f172a">Every node agrees</text>
+
+  <g font-size="14">
+    <rect x="822" y="200" width="296" height="48" rx="8" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="840" y="229" font-weight="700" fill="#334155">Node 0</text>
+    <text x="1102" y="229" fill="#0f172a" text-anchor="end"><tspan fill="#dc2626" font-weight="600">conflict</tspan>  ·  winner <tspan font-weight="700" fill="#2563eb">N1</tspan></text>
+
+    <rect x="822" y="260" width="296" height="48" rx="8" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="840" y="289" font-weight="700" fill="#2563eb">Node 1</text>
+    <text x="1102" y="289" fill="#0f172a" text-anchor="end"><tspan fill="#dc2626" font-weight="600">conflict</tspan>  ·  winner <tspan font-weight="700" fill="#2563eb">N1</tspan></text>
+
+    <rect x="822" y="320" width="296" height="48" rx="8" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="840" y="349" font-weight="700" fill="#d97706">Node 2</text>
+    <text x="1102" y="349" fill="#0f172a" text-anchor="end"><tspan fill="#dc2626" font-weight="600">conflict</tspan>  ·  winner <tspan font-weight="700" fill="#2563eb">N1</tspan></text>
+  </g>
+
+  <text x="970" y="452" font-size="14" fill="#475569" text-anchor="middle">Both claims are kept, never overwritten.</text>
+  <text x="970" y="474" font-size="14" fill="#475569" text-anchor="middle">The tie is broken deterministically:</text>
+  <text x="970" y="496" font-size="14" fill="#475569" text-anchor="middle">lowest NodeId wins, on every node.</text>
+
+  <!-- Footer -->
+  <text x="60" y="587" font-size="15" fill="#334155">Rust  ·  zero dependencies  ·  126 tests  ·  5 network scenarios</text>
+  <text x="1140" y="587" font-size="15" fill="#334155" text-anchor="end">Ravin Muthukumarane  ·  University of Westminster</text>
+</svg>

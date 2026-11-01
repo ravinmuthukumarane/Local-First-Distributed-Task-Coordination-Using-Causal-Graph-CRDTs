@@ -1,12 +1,22 @@
 # Local-First Distributed Task Coordination Using Causal-Graph CRDTs
 
+[![CI](https://github.com/ravinmuthukumarane/Local-First-Distributed-Task-Coordination-Using-Causal-Graph-CRDTs/actions/workflows/ci.yml/badge.svg)](https://github.com/ravinmuthukumarane/Local-First-Distributed-Task-Coordination-Using-Causal-Graph-CRDTs/actions/workflows/ci.yml)
+![Rust](https://img.shields.io/badge/rust-edition%202024-orange)
+![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
+![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)
+
+**Ravin Muthukumarane**. Master's research project, University of Westminster.
+Supervised by Vishmi Embuldeniya.
+
 ---
 
-## 1. Project title and purpose
+## 1. Overview
 
-**Title:** Local-First Distributed Task Coordination Using Causal-Graph CRDTs
+**Research question.** Can a causal-graph CRDT provide correct, convergent task
+coordination for local-first applications under adverse network conditions
+(partitions, offline periods, out-of-order delivery)?
 
-**Purpose.** This project implements and evaluates a *local-first*, serverless
+This project implements and evaluates a *local-first*, serverless
 mechanism for coordinating tasks across many independent nodes. Each node can
 **create**, **claim**, and **complete** tasks entirely offline, then reconcile
 its state with other nodes purely by exchanging messages — with no central
@@ -35,16 +45,35 @@ having seen each other) are **never silently dropped** — the system records
 both sides and flags the conflict, which is the property the evaluation is
 designed to demonstrate.
 
+<p align="center">
+  <img src="docs/causal-graph-conflict.svg" alt="Two offline nodes claim the same task, merge their causal graphs by set union, and both flag the conflict and resolve the same winner" width="900">
+</p>
+
 ---
 
-## 2. Research context
+## 2. Results
 
-This is a systems / distributed-computing dissertation artefact. The research
-question concerns whether a causal-graph CRDT can provide correct, convergent
-task coordination for local-first applications under adverse network
-conditions. There is **no machine-learning component** — see
-[Section 13, Not applicable](#13-not-applicable-to-this-project) for what
-that means for the project's scope.
+Three nodes, one tracked task, five network scenarios. Each scenario was run
+for seeds 1 to 10 and converged on every run
+(`always_converged: true` in every `results/*_multi_seed.json`).
+
+| Scenario | Setup | Nodes disagree during | All nodes agree from | Conflict flagged |
+|---|---|---|---|---|
+| `no_partition` | Clean network, Create, Claim, Complete | never | round 1 | no |
+| `short_partition` | Node 2 cut off for 2 rounds | rounds 1 to 2 | round 3 (on reconnect) | no |
+| `long_partition` | Node 2 cut off for 5 rounds | rounds 1 to 5 | round 6 (on reconnect) | no |
+| `high_contention` | Nodes 1 and 2 each claim the task without seeing the other's claim | never | round 1 | yes, on all 3 nodes, once both claims are delivered (round 3) |
+| `auto_frontier_reordered` | Same chain as `no_partition`, causal parents auto-wired, random delivery order | never | round 1 | no |
+
+What this shows: a cut-off node reaches the same state as the others in the
+first round after it reconnects, a genuine concurrent claim is detected
+identically on every node instead of being overwritten, and shuffling message
+delivery order does not change the outcome.
+
+What it does not show: performance at scale, behaviour over a real network, or
+a partitioned node doing its own work while offline (in the partition
+scenarios the cut-off node only receives). See
+[Known limitations](#12-known-limitations).
 
 ---
 
@@ -92,6 +121,8 @@ self-contained implementation instead (`node_sim/src/json_util.rs`,
 ```
 Local-First-Distributed-Task-Coordination-Using-Causal-Graph-CRDTs/
 ├── README.md                        # ← project overview and usage guide
+├── .github/workflows/ci.yml         # CI: format check, clippy, tests on every push and PR
+├── docs/causal-graph-conflict.svg   # Overview diagram used in this README
 └── local_first_task_coordination/   # The Cargo workspace (all source code lives here)
     ├── Cargo.toml                   # Workspace manifest
     ├── Cargo.lock                   # Pinned build (reproducibility)
@@ -181,7 +212,7 @@ cargo --version
 Clone the repository:
 
 ```sh
-git clone <repository-url>
+git clone https://github.com/ravinmuthukumarane/Local-First-Distributed-Task-Coordination-Using-Causal-Graph-CRDTs.git
 cd Local-First-Distributed-Task-Coordination-Using-Causal-Graph-CRDTs
 ```
 
@@ -219,6 +250,13 @@ The **seed** drives a deterministic `EventCounter`, so re-running with the same
 seed reproduces byte-identical results — this is what makes the evaluation
 repeatable.
 
+What the seed varies: in `auto_frontier_reordered` it also seeds the PRNG that
+shuffles delivery order, so different seeds exercise different arrival orders.
+In the other four scenarios it only changes the numeric event IDs, so their ten
+multi-seed runs are expected to produce identical metrics. The multi-seed runs
+there confirm the outcome does not depend on the specific IDs chosen; they are
+not ten independent experiments.
+
 ---
 
 ## 8. Instructions for running the system
@@ -246,7 +284,7 @@ This:
 | `no_partition` | Clean network — every node receives every message; linear Create → Claim → Complete |
 | `short_partition` | One node cut off for 2 rounds, then reconnected and caught up |
 | `long_partition` | One node cut off for 5 rounds, then reconnected and caught up |
-| `high_contention` | All nodes isolated, each claims the same task, then reconnect → conflict is detected |
+| `high_contention` | Node 0 creates the task while nodes 1 and 2 each claim it without having seen the other's claim (no causal link between the two claims); once all three nodes have broadcast, every node detects the conflict and resolves the same winner |
 | `auto_frontier_reordered` | Same Create → Claim → Complete chain as `no_partition`, but `causal_parents` are auto-wired from each node's own causal frontier instead of by hand, and every round is delivered in a seeded-random order instead of broadcast order — demonstrating that convergence holds regardless of both |
 
 ### Output files
@@ -383,21 +421,6 @@ seeds plus `always_converged`.
 
 ---
 
-## Instructions for training or evaluating models
-
-**Not applicable** — this project contains no machine-learning models. The
-equivalent "evaluation" step is running the scenario simulations and inspecting
-the convergence/conflict metrics; see Sections 8–10.
-
----
-
-## Default user credentials or test accounts
-
-**Not applicable** — the system is a standalone, offline simulation with no
-users, authentication, sessions, or accounts.
-
----
-
 ## 12. Known limitations
 
 - **Simulation, not a live network.** Nodes, message delivery, and partitions
@@ -411,8 +434,9 @@ users, authentication, sessions, or accounts.
   `complete_task_auto` methods can auto-wire `causal_parents` from a node's
   own local view instead — used by the `auto_frontier_reordered` scenario —
   but the four original scenarios still wire `causal_parents` by hand, since
-  their specific hand-crafted DAG shapes (e.g. the diamond in
-  `high_contention`) are part of what they're demonstrating.
+  their specific hand-crafted DAG shapes are part of what they're
+  demonstrating (e.g. in `high_contention` the two claims cite no parents, which
+  is what makes them concurrent).
 - **Conflict resolution is a fixed policy, not pluggable.** `task_model::resolve`
   (surfaced as `TaskState.resolved_claimant` / `resolved_completer`) picks a
   winner deterministically — lowest `NodeId` breaks a genuine tie — but that
@@ -440,31 +464,14 @@ users, authentication, sessions, or accounts.
   is not a general-purpose serialiser.
 - **Fixed topology.** Scenarios use three nodes and a single tracked task;
   scaling parameters are changed by editing the source, not via configuration.
+- **Partitioned nodes are passive.** In `short_partition` and `long_partition`
+  the cut-off node only misses messages; it does not create, claim or complete
+  anything while offline. Concurrent offline work is exercised only by
+  `high_contention`.
 
 ---
 
-## 13. Not applicable to this project
-
-This is a systems research artefact rather than a data-science /
-web-application project, so several items commonly expected of a software
-project don't apply here, flagged for completeness:
-
-| Checklist item | Status |
-|---|---|
-| Model training / evaluation scripts | **N/A** — no ML models |
-| Data preprocessing / feature engineering | **N/A** — input data is generated deterministically from seeds, not ingested |
-| Front-end / back-end / database components | **N/A** — no UI, server, or database; the system is a library + CLI simulation |
-| Database scripts and schemas | **N/A** — no persistent datastore |
-| Trained model files | **N/A** |
-| Sample input data / dataset preparation | The "dataset" is the generated simulation input; the ten committed `results/*.json` files are sample **output**. No external dataset download is required. |
-| Configuration files | **N/A** — parameters are in-code (Section 7) |
-| API integration instructions | **N/A** — no external or internal API |
-| Deployment configuration | **N/A** — runs locally via `cargo run` |
-| External services or API keys | **None required** — the project makes no network calls |
-
----
-
-## 14. License
+## 13. License
 
 Source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE):
 free to use, modify, and distribute for personal, academic, and research
@@ -474,7 +481,7 @@ commercial license — contact ravinmuthukumarane@gmail.com. See
 
 ---
 
-## 15. Quick start (summary)
+## 14. Quick start (summary)
 
 ```sh
 # 1. Ensure Rust ≥ 1.85 is installed (https://rustup.rs/)
@@ -485,6 +492,6 @@ cd local_first_task_coordination
 
 # 3. Build, test, run
 cargo build
-cargo test      # 125 tests, all passing
-cargo run       # runs all scenarios and writes result JSON to the current directory
+cargo test      # 126 tests, all passing
+cargo run       # runs all scenarios and writes result JSON into results/
 ```
