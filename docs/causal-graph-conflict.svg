@@ -16,26 +16,25 @@
   <text x="88" y="165" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
   <text x="112" y="166" font-size="18" font-weight="700" fill="#0f172a">Offline, no contact</text>
 
-  <text x="145" y="212" font-size="15" font-weight="700" fill="#2563eb" text-anchor="middle">Node 1</text>
-  <text x="315" y="212" font-size="15" font-weight="700" fill="#d97706" text-anchor="middle">Node 2</text>
+  <rect x="170" y="200" width="120" height="40" rx="8" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+  <text x="230" y="225" font-size="14" fill="#0f172a" text-anchor="middle">Create task</text>
+  <line x1="205" y1="240" x2="150" y2="316" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)"/>
+  <line x1="255" y1="240" x2="310" y2="316" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)"/>
 
-  <rect x="85" y="228" width="120" height="40" rx="8" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
-  <text x="145" y="253" font-size="14" fill="#0f172a" text-anchor="middle">Create task</text>
-  <line x1="145" y1="268" x2="145" y2="316" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)"/>
   <rect x="85" y="318" width="120" height="40" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
   <text x="145" y="343" font-size="14" fill="#1e3a8a" text-anchor="middle">Claim by N1</text>
-
-  <rect x="255" y="228" width="120" height="40" rx="8" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
-  <text x="315" y="253" font-size="14" fill="#0f172a" text-anchor="middle">Create task</text>
-  <line x1="315" y1="268" x2="315" y2="316" stroke="#64748b" stroke-width="1.8" marker-end="url(#arrow)"/>
   <rect x="255" y="318" width="120" height="40" rx="8" fill="#fffbeb" stroke="#d97706" stroke-width="2"/>
   <text x="315" y="343" font-size="14" fill="#78350f" text-anchor="middle">Claim by N2</text>
 
-  <line x1="230" y1="195" x2="230" y2="380" stroke="#dc2626" stroke-width="2" stroke-dasharray="6 6"/>
-  <text x="230" y="400" font-size="13" font-weight="600" fill="#dc2626" text-anchor="middle">partition</text>
+  <text x="145" y="382" font-size="15" font-weight="700" fill="#2563eb" text-anchor="middle">Node 1</text>
+  <text x="315" y="382" font-size="15" font-weight="700" fill="#d97706" text-anchor="middle">Node 2</text>
 
-  <text x="230" y="452" font-size="14" fill="#475569" text-anchor="middle">Both nodes claim the same task.</text>
-  <text x="230" y="474" font-size="14" fill="#475569" text-anchor="middle">Neither has seen the other's claim.</text>
+  <line x1="230" y1="262" x2="230" y2="392" stroke="#dc2626" stroke-width="2" stroke-dasharray="6 6"/>
+  <text x="230" y="412" font-size="13" font-weight="600" fill="#dc2626" text-anchor="middle">partition</text>
+
+  <text x="230" y="452" font-size="14" fill="#475569" text-anchor="middle">Both saw the Create, then lost contact.</text>
+  <text x="230" y="474" font-size="14" fill="#475569" text-anchor="middle">Each claims the task without</text>
+  <text x="230" y="496" font-size="14" fill="#475569" text-anchor="middle">seeing the other's claim.</text>
 
   <!-- Panel 2 -->
   <rect x="430" y="125" width="340" height="415" rx="14" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5"/>
