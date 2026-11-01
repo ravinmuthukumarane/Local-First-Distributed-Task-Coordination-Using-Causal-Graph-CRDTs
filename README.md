@@ -126,15 +126,19 @@ deterministic).
   `u128` newtypes, `Copy`), the `Operation` enum (`Create` / `Claim` /
   `Complete`), the immutable `Event` struct, the append-only `CausalGraph`
   with `insert` and `merge`, and the `Message` envelope used to ship events
-  between nodes. `CausalGraph`'s `events`/`children` maps are private —
-  callers read them through accessors (`events()`, `children_of()`, …) so the
-  edge map can't be pushed out of sync with the events it indexes. A
+  between nodes. The graph's state is just a grow-only set of events: the
+  `children` edge map is fully derived from each event's `causal_parents`,
+  so `merge` is a plain set union of events. `CausalGraph`'s maps are
+  private and `insert` / `merge` are the only mutators, so the edge map
+  can't be pushed out of sync with the events it indexes. A
   `by_task` index, maintained incrementally on `insert`, lets task-scoped
   lookups (used by `task_model::extract_task_subgraph`) skip scanning every
   event in the graph.
 - **`task_model`** — sits on `crdt_core`. Given a graph and a task ID it
   extracts the task's sub-graph and derives a `TaskState` (does the task
-  exist, who claimed it, who completed it, is there a conflict). It also
+  exist, who claimed it, who completed it, is there a conflict). The whole
+  `TaskState`, including its sorted claim / completion lists, is identical
+  on every replica holding the same events. It also
   **resolves** conflicts, not just detects them: `TaskState.resolved_claimant`
   / `resolved_completer` give the single `NodeId` every node converges on as
   the winner — a claim that causally supersedes all others wins outright; a
@@ -201,8 +205,9 @@ is committed so the build is fully reproducible with no network access.
 
 ## 7. Configuration requirements
 
-There are **no configuration files, environment variables, or secrets**. The
-experiment parameters are set directly in code and are intentionally simple:
+There are **no configuration files or secrets**, and the only environment
+variables affect test-output formatting (see Section 9). The experiment
+parameters are set directly in code and are intentionally simple:
 
 | Parameter | Where | Default |
 |---|---|---|
@@ -276,7 +281,7 @@ Run the full suite from inside `local_first_task_coordination/`:
 cargo test
 ```
 
-**Expected result: 125 tests, all passing** (verified with the toolchain in
+**Expected result: 126 tests, all passing** (verified with the toolchain in
 Section 4), distributed as:
 
 | Location | Tests | Focus |
@@ -285,10 +290,15 @@ Section 4), distributed as:
 | `crdt_core/tests/merge_properties.rs` | 3 | merge is **idempotent, commutative, associative** (the CRDT laws), on hand-picked graphs |
 | `crdt_core/tests/merge_fuzz.rs` | 4 | the same CRDT laws, re-checked over 150 random graphs per test (600 total checks) |
 | `crdt_core/tests/causal_graph_integration.rs` | 6 | multi-event graph behaviour |
-| `task_model` unit tests | 20 | sub-graph extraction, state derivation, causal-ancestry conflict detection, deterministic conflict *resolution* |
+| `task_model` unit tests | 21 | sub-graph extraction, state derivation, causal-ancestry conflict detection, deterministic conflict *resolution* |
 | `task_model/tests/semantic_validation.rs` | 6 | end-to-end semantics (e.g. two concurrent claims → conflict) |
 | `node_sim` unit tests | 68 | node buffers, broadcast/deliver, partition/heal, metrics, logging, JSON escaping, causal frontier tracking, the seeded PRNG, the reordered-delivery scenario |
-| **Total** | **125** | |
+| **Total** | **126** | |
+
+`cargo test` output is reformatted into categorised suites by
+`scripts/test_runner.sh` (wired up in `.cargo/config.toml`). Set
+`TEST_REPORT_RAW=1` to get standard libtest output instead; this happens
+automatically when the `CI` environment variable is set.
 
 The pre-generated JSON files in `local_first_task_coordination/results/` are the
 recorded output of a successful run and serve as reproducible test evidence.
@@ -328,7 +338,7 @@ round, plus an ordered event log:
 | `event_counts` | Number of events in each node's graph after this round |
 | `conflict_counts` | `1` if the node sees a conflict on the tracked task, else `0` (per node) |
 | `edge_counts` | Number of causal edges (parent→child links) in each node's graph |
-| `converged` | `true` when every node holds an identical set of event IDs |
+| `converged` | `true` when every node holds an identical set of event IDs **and** derives an identical `TaskState` for every known task |
 | `convergence_round` | First round in which all nodes converged (`null` if never) |
 | `log` | Ordered trace of every broadcast, delivery, and state snapshot |
 
@@ -345,9 +355,10 @@ seeds plus `always_converged`.
 - **Causal graph** — an append-only DAG of events; each node's local source of
   truth. Edges for a not-yet-received parent are still recorded, so
   out-of-order delivery is handled gracefully.
-- **Merge** — the CRDT join. Merging graph *A* into *B* gives the same result as
-  merging *B* into *A*, and merging twice changes nothing. This is what
-  guarantees convergence.
+- **Merge** — the CRDT join: a set union of events (edges are re-derived from
+  each event's `causal_parents`, so they need no separate merge). Merging
+  graph *A* into *B* gives the same result as merging *B* into *A*, and
+  merging twice changes nothing. This is what guarantees convergence.
 - **Conflict detection** — a task with more than one *concurrent* claim (or
   completion) is derived as a conflict; both sides are retained, never
   overwritten. Concurrency is decided from the causal graph itself: two
@@ -408,6 +419,18 @@ users, authentication, sessions, or accounts.
   policy is not configurable per application. A consumer wanting a different
   tie-break (e.g. by timestamp, or a priority order) has to implement it
   against the maximal-claims logic itself.
+- **Event IDs must be globally unique, and `causal_parents` is trusted.**
+  Commutativity relies on no two different events sharing an `EventId`; the
+  seeded counter guarantees this here, and `insert` debug-asserts it. Nothing
+  checks that cited parents exist or that the graph stays acyclic, which is
+  safe in this closed simulation but not for events from untrusted peers.
+- **Permissive task lifecycle.** `TaskState` records what was observed and
+  rejects nothing: a `Claim` / `Complete` without a `Create`, or a `Complete`
+  from a node other than the resolved claimant, is still counted.
+- **Quadratic conflict checks.** Conflict detection and resolution compare
+  every pair of claims (or completions) with a fresh ancestry walk, costing
+  O(k² · g) for k claims per task. Fine at this scale; long-lived graphs
+  would need vector clocks or cached reachability.
 - **Unbounded, ever-growing graph.** Events are append-only with no compaction,
   garbage collection, or snapshotting, so memory grows with history. This is
   acceptable for the bounded experiments here but not for long-lived
