@@ -8,8 +8,10 @@ pub use crdt_core::Operation;
 /// Extracts all events related to a specific task into a new `CausalGraph`.
 ///
 /// An event belongs to the task if its `operation` field references `task_id`
-/// in any variant. Causal edges between included events are preserved; edges
-/// that cross task boundaries are dropped.
+/// in any variant. Included events keep their full `causal_parents`, so the
+/// subgraph's `children` map also holds edges from parents *outside* the task
+/// (those parents appear as keys in `children()` but not in `events()`, just
+/// like a parent that hasn't arrived yet).
 ///
 /// Looks events up via `graph`'s internal `by_task` index rather than
 /// scanning every event in the graph, so cost scales with the number of
@@ -21,32 +23,24 @@ pub fn extract_task_subgraph(graph: &CausalGraph, task_id: &TaskId) -> CausalGra
         sub.insert(event.clone());
     }
 
-    // Union edges for every event id present in the subgraph. `insert` already
-    // re-derives edges from causal_parents, but edges recorded in graph.children
-    // for parents absent at insert time are only in the children map, not the
-    // event payload — so we must carry them over explicitly.
-    let sub_event_ids: Vec<EventId> = sub.events().keys().copied().collect();
-    for event_id in sub_event_ids {
-        if let Some(child_set) = graph.children_of(&event_id) {
-            for child_id in child_set {
-                if sub.contains_event(child_id) {
-                    sub.record_edge(event_id, *child_id);
-                }
-            }
-        }
-    }
-
     sub
 }
 
 /// Derived view of a task's lifecycle state, computed from a `CausalGraph`.
+///
+/// The model is deliberately permissive: it records what was observed and
+/// does not reject operations. A `Claim` or `Complete` with no `Create`, or a
+/// `Complete` from a node other than [`Self::resolved_claimant`], is still
+/// counted. Callers that need stricter lifecycle rules should check them
+/// against these fields.
 #[derive(Debug, PartialEq, Eq)]
 pub struct TaskState {
     /// `true` if at least one `Create` event for this task has been observed.
     pub exists: bool,
-    /// All `NodeId`s that have claimed this task.
+    /// All `NodeId`s that have claimed this task, sorted ascending (one entry
+    /// per `Claim` event, so a node may appear more than once).
     pub claims: Vec<NodeId>,
-    /// All `NodeId`s that have completed this task.
+    /// All `NodeId`s that have completed this task, sorted ascending.
     pub completions: Vec<NodeId>,
     /// `true` if two or more claims (or two or more completions) are
     /// causally concurrent — i.e. neither one is a causal ancestor of the
@@ -81,6 +75,11 @@ pub struct TaskState {
 /// correctness requirement; callers wanting a different tie-break can filter
 /// to the maximal set themselves using [`extract_task_subgraph`] and their
 /// own comparison.
+///
+/// Cost is O(k² · g) for k events of this kind and g events reachable from
+/// them, since each pair does its own ancestry walk. That's fine at the
+/// simulation's scale; a vector clock or cached reachability would be needed
+/// for long-lived graphs with many claims per task.
 fn resolve(graph: &CausalGraph, events: &[(EventId, NodeId)]) -> Option<NodeId> {
     let maximal_owners: Vec<NodeId> = events
         .iter()
@@ -125,7 +124,8 @@ fn causally_precedes(graph: &CausalGraph, ancestor: &EventId, descendant: &Event
 
 /// Returns `true` if any two events in `event_ids` are causally concurrent
 /// (neither is an ancestor of the other) — a genuine conflict, as opposed to
-/// a later event that causally supersedes an earlier one.
+/// a later event that causally supersedes an earlier one. Same O(k² · g) cost
+/// as [`resolve`].
 fn has_concurrent_pair(graph: &CausalGraph, event_ids: &[EventId]) -> bool {
     for i in 0..event_ids.len() {
         for j in (i + 1)..event_ids.len() {
@@ -165,10 +165,18 @@ pub fn derive_task_state(graph: &CausalGraph, task_id: &TaskId) -> TaskState {
     let resolved_claimant = resolve(graph, &claim_events);
     let resolved_completer = resolve(graph, &completion_events);
 
+    // Event iteration order comes from a HashMap, so sort to make the whole
+    // `TaskState` (not just the resolved winners) identical across replicas.
+    let sorted_owners = |events: Vec<(EventId, NodeId)>| {
+        let mut owners: Vec<NodeId> = events.into_iter().map(|(_, n)| n).collect();
+        owners.sort_by_key(|n| n.0);
+        owners
+    };
+
     TaskState {
         exists,
-        claims: claim_events.into_iter().map(|(_, n)| n).collect(),
-        completions: completion_events.into_iter().map(|(_, n)| n).collect(),
+        claims: sorted_owners(claim_events),
+        completions: sorted_owners(completion_events),
         has_conflict,
         resolved_claimant,
         resolved_completer,
@@ -261,6 +269,18 @@ mod tests {
         assert!(sub.children()[&EventId(1)].contains(&EventId(2)));
         assert!(sub.children()[&EventId(2)].contains(&EventId(3)));
         assert!(!sub.children().contains_key(&EventId(3)));
+    }
+
+    #[test]
+    fn cross_task_parent_edge_kept_but_parent_event_excluded() {
+        let mut graph = CausalGraph::new();
+        graph.insert(event(1, Operation::Create(TaskId(1)), vec![]));
+        graph.insert(event(2, Operation::Create(TaskId(2)), vec![1]));
+
+        let sub = extract_task_subgraph(&graph, &TaskId(2));
+
+        assert!(!sub.contains_event(&EventId(1)));
+        assert!(sub.children()[&EventId(1)].contains(&EventId(2)));
     }
 
     #[test]
@@ -475,6 +495,9 @@ mod tests {
             state_forward.resolved_claimant,
             state_reverse.resolved_claimant
         );
+        // The whole state, including the claims list, must match.
+        assert_eq!(state_forward, state_reverse);
+        assert_eq!(state_forward.claims, vec![NodeId(5), NodeId(30)]);
     }
 
     #[test]

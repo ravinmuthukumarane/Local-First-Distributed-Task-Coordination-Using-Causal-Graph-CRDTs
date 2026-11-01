@@ -6,7 +6,9 @@
 #
 # Anything that is not a test binary (e.g. `cargo run`) is executed untouched,
 # as are test invocations whose output we must not rewrite (--list, --nocapture,
-# custom --format). Set TEST_REPORT_RAW=1 to bypass formatting entirely.
+# custom --format). Set TEST_REPORT_RAW=1 to bypass formatting entirely; it is
+# also bypassed automatically under CI (CI env var set), so CI tooling sees
+# standard libtest output.
 
 set -uo pipefail
 
@@ -22,6 +24,7 @@ case "$BIN" in
 esac
 
 [ "${TEST_REPORT_RAW:-0}" = "1" ] && run_plain "$@"
+[ -n "${CI:-}" ] && run_plain "$@"
 
 has_threads=0
 for arg in "$@"; do
