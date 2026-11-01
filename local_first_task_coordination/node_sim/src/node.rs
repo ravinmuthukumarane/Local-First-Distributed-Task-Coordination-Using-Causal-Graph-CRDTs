@@ -104,14 +104,14 @@ impl Node {
 
     /// Returns this node's current causal frontier for `task_id`: the ids of
     /// events (for this task) that this node knows of and that have no known
-    /// child within the task's history — the "heads" of its local view.
+    /// child within the task's history: the "heads" of its local view.
     ///
     /// Considers both `self.graph` (events already merged in) and
     /// `self.outbox` (this node's own not-yet-delivered writes), so a node's
     /// own pending actions are visible to itself immediately rather than
     /// only after a full broadcast/deliver round-trip. Passing this frontier
     /// as `causal_parents` for a new event makes it depend on everything
-    /// this node currently knows about the task — the same rule a real
+    /// this node currently knows about the task, the same rule a real
     /// client would apply automatically instead of a scenario wiring
     /// `causal_parents` by hand.
     ///
@@ -249,8 +249,8 @@ mod tests {
 
     #[test]
     fn claim_task_auto_cites_pending_outbox_create_as_parent() {
-        // create_task_auto only stages the Create in the outbox — it hasn't
-        // reached self.graph yet — so claim_task_auto must still see it via
+        // create_task_auto only stages the Create in the outbox (it hasn't
+        // reached self.graph yet), so claim_task_auto must still see it via
         // the outbox to pick it up as a parent.
         let mut n = node();
         let mut counter = EventCounter::new(1);

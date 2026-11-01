@@ -9,7 +9,7 @@
 //!
 //! The project is intentionally zero-dependency (see the top-level README),
 //! so this uses a small self-contained xorshift PRNG rather than a crate
-//! like `rand` — it only needs to be deterministic and reasonably
+//! like `rand`; it only needs to be deterministic and reasonably
 //! well-distributed, not cryptographically sound.
 
 use crdt_core::causal_graph::CausalGraph;

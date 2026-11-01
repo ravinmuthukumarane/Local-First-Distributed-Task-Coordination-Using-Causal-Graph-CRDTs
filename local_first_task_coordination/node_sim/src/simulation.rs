@@ -113,8 +113,8 @@ impl Simulation {
     ///
     /// Because [`crdt_core::causal_graph::CausalGraph::merge`]/`insert` are
     /// commutative and idempotent, the final converged state is unaffected
-    /// by delivery order — this method exists to demonstrate that
-    /// robustness empirically (see `scenarios::scenario_reordered_delivery`)
+    /// by delivery order. This method exists to demonstrate that
+    /// robustness empirically (see `scenarios::scenario_auto_frontier_reordered`)
     /// rather than only assert it from the merge-law tests.
     pub fn deliver_all_shuffled(&mut self, rng: &mut Xorshift64) {
         for queue in self.message_queues.iter_mut() {
@@ -178,7 +178,7 @@ impl Simulation {
     }
 
     /// `true` if every node derives an identical `TaskState` for every task
-    /// any node knows about — the property the system actually promises,
+    /// any node knows about: the property the system actually promises,
     /// rather than only its precondition (identical event sets).
     fn derived_states_converged(&self) -> bool {
         let task_ids: HashSet<TaskId> = self
@@ -234,7 +234,7 @@ impl Simulation {
         self.record(entry);
 
         if self.partitioned.contains(&sender_index) {
-            // drain the outbox silently — sender is cut off from everyone including itself
+            // drain the outbox silently: sender is cut off from everyone including itself
             self.nodes[sender_index].collect_outbox_as_message();
             return;
         }

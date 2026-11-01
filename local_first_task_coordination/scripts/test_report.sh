@@ -16,7 +16,7 @@ cd "$(dirname "$0")/.."
 RAW=$(TEST_REPORT_RAW=1 cargo test --workspace --no-fail-fast --color never "$@" -- --test-threads=1 2>&1)
 CARGO_STATUS=$?
 
-# A build failure produces no test results at all — show cargo's own output.
+# A build failure produces no test results at all, so show cargo's own output.
 if ! printf '%s\n' "$RAW" | grep -q '^test result:'; then
     printf '%s\n' "$RAW"
     exit $CARGO_STATUS

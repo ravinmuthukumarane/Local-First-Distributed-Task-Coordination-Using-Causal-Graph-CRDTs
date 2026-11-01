@@ -35,7 +35,7 @@ fn causal_chain_respected() {
 fn concurrent_claims_after_shared_create() {
     let mut graph = CausalGraph::new();
     graph.insert(event(1, Operation::Create(TaskId(1)), vec![]));
-    // Both claims reference only the create — neither knows about the other
+    // Both claims reference only the create; neither knows about the other
     graph.insert(event(2, Operation::Claim(TaskId(1), NodeId(10)), vec![1]));
     graph.insert(event(3, Operation::Claim(TaskId(1), NodeId(20)), vec![1]));
 
@@ -47,7 +47,7 @@ fn concurrent_claims_after_shared_create() {
     assert!(state.claims.contains(&NodeId(20)));
 }
 
-// 3. Duplicate creates are idempotent — has_conflict driven by claims/completions only
+// 3. Duplicate creates are idempotent; has_conflict driven by claims/completions only
 #[test]
 fn duplicate_create_is_idempotent() {
     let mut graph = CausalGraph::new();
@@ -62,7 +62,7 @@ fn duplicate_create_is_idempotent() {
     assert!(state.completions.is_empty());
 }
 
-// 4. Complete without create — records what happened, does not enforce ordering
+// 4. Complete without create: records what happened, does not enforce ordering
 #[test]
 fn complete_without_create() {
     let mut graph = CausalGraph::new();

@@ -10,7 +10,7 @@
 ///
 /// Handles the two characters that are structurally required (`\` and `"`)
 /// plus the ASCII control characters (0x00-0x1F) that would otherwise
-/// produce invalid JSON if they ever appeared in log text — a literal
+/// produce invalid JSON if they ever appeared in log text. A literal
 /// newline or tab inside a JSON string is not legal per the JSON grammar.
 pub fn escape_json_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len());

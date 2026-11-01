@@ -94,7 +94,7 @@ pub fn scenario_short_partition(seed: u128) -> (Simulation, Vec<Metrics>) {
     record_round(&mut sim, &task_id, "round2", &mut snapshots);
 
     // Heal node 2 and deliver its backlog directly into its inbox before
-    // the next deliver_all — this represents the anti-entropy catch-up
+    // the next deliver_all. This represents the anti-entropy catch-up
     // that occurs when a previously partitioned node reconnects.
     sim.heal(2);
     let backlog: Vec<_> = sim.nodes[0].graph.events().values().cloned().collect();
@@ -183,12 +183,12 @@ pub fn scenario_high_contention(seed: u128) -> (Simulation, Vec<Metrics>) {
 /// Runs a Create → Claim → Complete chain like [`scenario_no_partition`], but
 /// exercises two additional capabilities together:
 ///
-/// - **Automatic causal-parent wiring** — every event is staged via
+/// - **Automatic causal-parent wiring**: every event is staged via
 ///   `Node::create_task_auto` / `claim_task_auto` / `complete_task_auto`
 ///   rather than the scenario computing and passing `causal_parents` by
 ///   hand, so the causal chain comes entirely from each node's own local
 ///   view (see [`crate::node::Node::frontier_for`]).
-/// - **Randomized delivery order** — each round is delivered via
+/// - **Randomized delivery order**: each round is delivered via
 ///   [`Simulation::deliver_all_shuffled`] with a seeded RNG instead of
 ///   [`Simulation::deliver_all`], so messages are inserted into each node's
 ///   graph in a randomized order rather than broadcast order.

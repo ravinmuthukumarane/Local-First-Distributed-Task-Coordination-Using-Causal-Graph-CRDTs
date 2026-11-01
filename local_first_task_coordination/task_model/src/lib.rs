@@ -43,7 +43,7 @@ pub struct TaskState {
     /// All `NodeId`s that have completed this task, sorted ascending.
     pub completions: Vec<NodeId>,
     /// `true` if two or more claims (or two or more completions) are
-    /// causally concurrent — i.e. neither one is a causal ancestor of the
+    /// causally concurrent, i.e. neither one is a causal ancestor of the
     /// other. A later claim that causally follows an earlier claim (for
     /// example a re-claim staged after the original claimant's `Complete`)
     /// is *not* a conflict even though `claims.len() > 1`.
@@ -53,7 +53,7 @@ pub struct TaskState {
     /// they've observed the same events, regardless of the order in which
     /// they arrived. `None` if the task has never been claimed. See
     /// [`resolve`] for the policy; this does not imply `has_conflict` is
-    /// `false` — a resolved winner is picked even when claims are conflicting.
+    /// `false`: a resolved winner is picked even when claims are conflicting.
     pub resolved_claimant: Option<NodeId>,
     /// The same resolution policy applied to `completions`.
     pub resolved_completer: Option<NodeId>,
@@ -64,12 +64,12 @@ pub struct TaskState {
 ///
 /// Policy: an event is "superseded" if some other event in `events`
 /// causally follows it. The winner is chosen among the non-superseded
-/// ("maximal") events — the ones nothing else in the set causally follows.
+/// ("maximal") events: the ones nothing else in the set causally follows.
 /// If exactly one remains, it's the unambiguous winner: a later event in the
 /// same causal chain (e.g. a re-claim staged after the original claimant's
 /// `Complete`) always beats an earlier one it causally supersedes. If more
-/// than one remains, those events are mutually concurrent — a genuine
-/// conflict — and the tie is broken by the lowest `NodeId`, so every node
+/// than one remains, those events are mutually concurrent (a genuine
+/// conflict), and the tie is broken by the lowest `NodeId`, so every node
 /// that has observed the same events picks the same winner regardless of
 /// delivery order. This is a policy choice (lowest id wins), not a
 /// correctness requirement; callers wanting a different tie-break can filter
@@ -94,7 +94,7 @@ fn resolve(graph: &CausalGraph, events: &[(EventId, NodeId)]) -> Option<NodeId> 
     maximal_owners.iter().map(|n| n.0).min().map(NodeId)
 }
 
-/// Returns `true` if `ancestor` causally precedes `descendant` — i.e.
+/// Returns `true` if `ancestor` causally precedes `descendant`, i.e.
 /// `descendant` lists `ancestor` in its `causal_parents`, directly or
 /// transitively through intermediate events.
 ///
@@ -123,7 +123,7 @@ fn causally_precedes(graph: &CausalGraph, ancestor: &EventId, descendant: &Event
 }
 
 /// Returns `true` if any two events in `event_ids` are causally concurrent
-/// (neither is an ancestor of the other) — a genuine conflict, as opposed to
+/// (neither is an ancestor of the other): a genuine conflict, as opposed to
 /// a later event that causally supersedes an earlier one. Same O(k² · g) cost
 /// as [`resolve`].
 fn has_concurrent_pair(graph: &CausalGraph, event_ids: &[EventId]) -> bool {
@@ -395,7 +395,7 @@ mod tests {
 
     #[test]
     fn transitively_ordered_claims_are_not_a_conflict() {
-        // Claim(20)'s parent is Complete(10), whose parent is Claim(10) —
+        // Claim(20)'s parent is Complete(10), whose parent is Claim(10):
         // the ancestry is two hops away, not a direct parent, and must still
         // be detected as ordering rather than concurrency.
         let mut graph = CausalGraph::new();

@@ -1,10 +1,10 @@
 # Formats libtest output into categorised, human-readable suites.
 #
 # Variables:
-#   mode    "workspace" — input is a full `cargo test` run; suite membership is
+#   mode    "workspace": input is a full `cargo test` run; suite membership is
 #                         tracked from cargo's "Running ..." lines and a grand
 #                         summary table is printed at the end.
-#           "binary"    — input is one test binary's output; `binname` must be
+#           "binary":    input is one test binary's output; `binname` must be
 #                         supplied and a single compact summary line is printed.
 #   binname name of the test binary being formatted (binary mode only).
 #

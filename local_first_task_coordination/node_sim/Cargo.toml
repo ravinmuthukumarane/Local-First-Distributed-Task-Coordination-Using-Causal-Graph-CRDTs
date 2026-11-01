@@ -2,6 +2,9 @@
 name = "node_sim"
 version = "0.1.0"
 edition = "2024"
+description = "Deterministic simulation harness: partitions, reordered delivery and convergence metrics for the task CRDT."
+authors.workspace = true
+repository.workspace = true
 license-file = "../../LICENSE"
 
 [dependencies]

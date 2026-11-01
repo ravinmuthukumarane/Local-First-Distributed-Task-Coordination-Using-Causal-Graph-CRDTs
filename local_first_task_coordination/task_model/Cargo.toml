@@ -2,6 +2,9 @@
 name = "task_model"
 version = "0.1.0"
 edition = "2024"
+description = "Task semantics over the causal-graph CRDT: state derivation, concurrent-claim detection and deterministic resolution."
+authors.workspace = true
+repository.workspace = true
 license-file = "../../LICENSE"
 
 [dependencies]

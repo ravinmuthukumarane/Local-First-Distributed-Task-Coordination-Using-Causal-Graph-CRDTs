@@ -5,3 +5,7 @@ members = [
     "node_sim",
 ]
 resolver = "2"
+
+[workspace.package]
+authors = ["Ravin Muthukumarane <ravinmuthukumarane@gmail.com>"]
+repository = "https://github.com/ravinmuthukumarane/Local-First-Distributed-Task-Coordination-Using-Causal-Graph-CRDTs"

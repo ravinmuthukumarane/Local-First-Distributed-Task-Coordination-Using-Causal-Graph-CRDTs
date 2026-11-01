@@ -4,7 +4,7 @@
 //! The project is intentionally zero-dependency (see the top-level README),
 //! so this is a small self-contained xorshift generator rather than a crate
 //! like `rand`. It only needs to be deterministic (reproducible from a seed)
-//! and reasonably well-distributed — nothing here is security-sensitive.
+//! and reasonably well-distributed; nothing here is security-sensitive.
 
 /// Deterministic xorshift64 PRNG.
 pub struct Xorshift64 {
