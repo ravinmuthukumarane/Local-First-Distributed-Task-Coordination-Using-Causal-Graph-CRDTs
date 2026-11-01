@@ -17,11 +17,15 @@ fn task_id_of(operation: &Operation) -> TaskId {
 /// causal edges are recorded in a separate `children` map so that edges for
 /// not-yet-received parents can be stored without blocking insertion.
 ///
-/// Fields are private: mutation only ever happens through [`Self::insert`],
-/// [`Self::merge`], and [`Self::record_edge`], so the `children` map can't be
-/// pushed out of sync with the events it indexes by a caller poking the
-/// field directly. Read access goes through [`Self::events`], [`Self::children`],
-/// and the narrower per-id/per-task accessors below.
+/// `children` and `by_task` are pure indexes: both are fully derived from the
+/// events themselves (every edge comes from some event's `causal_parents`), so
+/// the graph's state is just a grow-only set of events. Fields are private and
+/// the only public mutators are [`Self::insert`] and [`Self::merge`], so the
+/// indexes can't be pushed out of sync by a caller. Read access goes through
+/// [`Self::events`], [`Self::children`], and the narrower accessors below.
+///
+/// Correctness assumes `EventId`s are globally unique: two different events
+/// sharing an id would make the result depend on which arrived first.
 #[derive(Clone, Debug, Default)]
 pub struct CausalGraph {
     events: HashMap<EventId, Event>,
@@ -73,12 +77,9 @@ impl CausalGraph {
     }
 
     /// Records that `child` lists `parent` in its `causal_parents`, without
-    /// requiring `parent`'s event to be known yet.
-    ///
-    /// `insert` calls this for every event it accepts; it's also exposed so
-    /// callers building a derived graph (e.g. task_model's subgraph
-    /// extraction) can carry over edges without reaching into private state.
-    pub fn record_edge(&mut self, parent: EventId, child: EventId) {
+    /// requiring `parent`'s event to be known yet. Only `insert` calls this,
+    /// which is what keeps `children` derivable from the events alone.
+    fn record_edge(&mut self, parent: EventId, child: EventId) {
         self.children.entry(parent).or_default().insert(child);
     }
 
@@ -96,7 +97,11 @@ impl CausalGraph {
     /// events accepted from an untrusted network peer, which could cite a
     /// fabricated or cyclic parent to influence causal ordering.
     pub fn insert(&mut self, event: Event) {
-        if self.events.contains_key(&event.event_id) {
+        if let Some(existing) = self.events.get(&event.event_id) {
+            debug_assert_eq!(
+                existing, &event,
+                "EventId reused for a different event; ids must be globally unique"
+            );
             return;
         }
 
@@ -114,22 +119,14 @@ impl CausalGraph {
 
     /// Merges another `CausalGraph` into this one.
     ///
-    /// The operation is idempotent, commutative, and associative (CRDT join).
-    /// Reusing `insert` for events guarantees the duplicate-skip, edge-recording,
-    /// and `by_task`-indexing logic stays in one place. The children union handles
-    /// edges that `other` recorded for parents that were absent at insertion time —
-    /// those edges may not be re-derived from the events alone, so we must merge
-    /// the edge sets directly.
+    /// The operation is idempotent, commutative, and associative (CRDT join):
+    /// it is a set union of events. No separate edge union is needed — every
+    /// edge in `other.children` comes from some event's `causal_parents`
+    /// (including edges to parents neither side has seen yet), so `insert`
+    /// re-derives all of them.
     pub fn merge(&mut self, other: &CausalGraph) {
         for event in other.events.values() {
             self.insert(event.clone());
-        }
-
-        for (parent_id, child_set) in &other.children {
-            self.children
-                .entry(*parent_id)
-                .or_default()
-                .extend(child_set.iter().cloned());
         }
     }
 }

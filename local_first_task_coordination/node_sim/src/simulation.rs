@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crdt_core::message::Message;
-use crdt_core::{EventId, NodeId, TaskId};
+use crdt_core::{EventId, NodeId, Operation, TaskId};
 use task_model::TaskState;
 
 use crate::node::Node;
@@ -15,7 +15,8 @@ pub struct Metrics {
     pub conflict_counts: Vec<usize>,
     /// Cumulative number of `receive_message` calls since simulation start.
     pub message_count: usize,
-    /// `true` if all nodes hold an identical set of `EventId`s.
+    /// `true` if all nodes hold an identical set of `EventId`s and derive an
+    /// identical `TaskState` for every known task.
     pub converged: bool,
     /// Number of entries in each node's `children` map (causal edge count).
     pub edge_counts: Vec<usize>,
@@ -154,14 +155,7 @@ impl Simulation {
             .map(|n| n.graph.children().len())
             .collect();
 
-        let converged = {
-            let sets: Vec<HashSet<&EventId>> = self
-                .nodes
-                .iter()
-                .map(|n| n.graph.events().keys().collect())
-                .collect();
-            sets.windows(2).all(|w| w[0] == w[1])
-        };
+        let converged = self.events_converged() && self.derived_states_converged();
 
         Metrics {
             event_counts,
@@ -171,6 +165,39 @@ impl Simulation {
             edge_counts,
             convergence_round: None,
         }
+    }
+
+    /// `true` if all nodes hold an identical set of `EventId`s.
+    fn events_converged(&self) -> bool {
+        let sets: Vec<HashSet<&EventId>> = self
+            .nodes
+            .iter()
+            .map(|n| n.graph.events().keys().collect())
+            .collect();
+        sets.windows(2).all(|w| w[0] == w[1])
+    }
+
+    /// `true` if every node derives an identical `TaskState` for every task
+    /// any node knows about — the property the system actually promises,
+    /// rather than only its precondition (identical event sets).
+    fn derived_states_converged(&self) -> bool {
+        let task_ids: HashSet<TaskId> = self
+            .nodes
+            .iter()
+            .flat_map(|n| n.graph.events().values())
+            .map(|e| match e.operation {
+                Operation::Create(t) | Operation::Claim(t, _) | Operation::Complete(t, _) => t,
+            })
+            .collect();
+
+        task_ids.iter().all(|task_id| {
+            let states: Vec<TaskState> = self
+                .nodes
+                .iter()
+                .map(|n| task_model::derive_task_state(&n.graph, task_id))
+                .collect();
+            states.windows(2).all(|w| w[0] == w[1])
+        })
     }
 
     /// Returns the 1-indexed round number of the first converged snapshot, or `None`.

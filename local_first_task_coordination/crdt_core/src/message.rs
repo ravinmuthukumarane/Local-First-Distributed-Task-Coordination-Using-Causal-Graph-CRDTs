@@ -5,7 +5,9 @@ use crate::Event;
 /// A batch of events exchanged between nodes during a synchronisation round.
 ///
 /// Events are stored in a `HashSet` so that duplicates are automatically
-/// deduplicated upon insertion.
+/// deduplicated upon insertion. Equality is over the whole `Event`, not just
+/// its `EventId`; with globally unique ids (see
+/// [`crate::causal_graph::CausalGraph`]) the two coincide.
 #[derive(Clone, Debug, Default)]
 pub struct Message {
     /// The set of events carried by this message.
@@ -18,7 +20,7 @@ impl Message {
         Message::default()
     }
 
-    /// Adds an event to the message, deduplicating by `EventId`.
+    /// Adds an event to the message, ignoring an identical duplicate.
     pub fn add(&mut self, event: Event) {
         self.events.insert(event);
     }
