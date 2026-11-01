@@ -170,7 +170,7 @@ impl Node {
 
     /// Drains the outbox into a `Message` ready for broadcast.
     pub fn collect_outbox_as_message(&mut self) -> Message {
-        Message::from_events(self.outbox.drain(..).collect())
+        Message::from_events(std::mem::take(&mut self.outbox))
     }
 
     /// Delivers a `Message` by pushing all its events into the inbox.
