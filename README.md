@@ -5,8 +5,8 @@
 ![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
 ![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)
 
-**Ravin Muthukumarane**. Master's research project, University of Westminster.
-Supervised by Vishmi Embuldeniya.
+**Ravin Muthukumarane**. Master's Research Project, University of Westminster.
+Supervised by Ms. Vishmi Embuldeniya.
 
 ---
 
